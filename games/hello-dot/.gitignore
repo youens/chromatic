@@ -1,0 +1,7 @@
+build/
+web/hello-dot.gbc
+__pycache__/
+*.sav
+*.state
+
+.wrangler/

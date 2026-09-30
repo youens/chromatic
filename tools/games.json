@@ -1,0 +1,274 @@
+[
+  {
+    "slug": "neon-wake",
+    "title": "Neon Wake",
+    "genre": "Arcade racing",
+    "tagline": "Outrun the night.",
+    "description": "Cut through a neon megacity on a highway that never stops bending. Thread the traffic, collect energy crystals, and spend your boost at just the right moment.",
+    "accent": "#66f4ee",
+    "controls": [
+      [
+        "\u2190 \u2192",
+        "Steer"
+      ],
+      [
+        "A / X / Space",
+        "Boost"
+      ],
+      [
+        "B / Z",
+        "Brake"
+      ]
+    ],
+    "goal": "Survive sixty seconds. Overtake traffic and collect crystals for bonus points. Going off-road slows you down.",
+    "experiment": "Perspective road projection, six traffic objects, animated lane markings and speed-dependent motion.",
+    "order": 1,
+    "category": "action"
+  },
+  {
+    "slug": "moonthread",
+    "title": "Moonthread",
+    "genre": "Gravity platformer",
+    "tagline": "Gravity is a thread. Pull it.",
+    "description": "Drift between the floors and ceilings of six abandoned lunar chambers. Reverse gravity in midair, slip around suspended ledges, and find the thread that leads you home.",
+    "accent": "#dac2ff",
+    "controls": [
+      [
+        "\u2190 \u2192",
+        "Drift"
+      ],
+      [
+        "A / X / Space",
+        "Reverse gravity"
+      ],
+      [
+        "B / Z",
+        "Precision brake"
+      ]
+    ],
+    "goal": "Collect all three stars, then enter the green gate in the upper-right corner. Clear six chambers before two minutes or six lives run out.",
+    "experiment": "Fixed-point acceleration, reversible gravity, one-sided platform landings and sprite inversion.",
+    "order": 2,
+    "category": "exploration"
+  },
+  {
+    "slug": "echo-vault",
+    "title": "Echo Vault",
+    "genre": "Sonar stealth",
+    "tagline": "Every echo tells on you.",
+    "description": "A flooded vault. Three lost keys. Two sentries listening in the dark. Sonar reveals a fresh maze, but the very sound that saves you gives you away.",
+    "accent": "#87e2bd",
+    "controls": [
+      [
+        "D-pad / Arrows",
+        "Move"
+      ],
+      [
+        "A / X / Space",
+        "Sonar pulse"
+      ],
+      [
+        "B / Z",
+        "Drop a decoy"
+      ]
+    ],
+    "goal": "Find three golden keys and reach the bottom-right exit. Clear four vaults within 800 moves. Energy recharges every six moves. Guards chase sonar and decoys.",
+    "experiment": "Procedural maze generation, persistent exploration memory and breadth-first guard pathfinding.",
+    "order": 3,
+    "category": "exploration"
+  },
+  {
+    "slug": "bloom-circuit",
+    "title": "Bloom Circuit",
+    "genre": "Living circuit puzzle",
+    "tagline": "A little connection. A living world.",
+    "description": "Rotate glass roots until an entire garden wakes up. Each connection carries light from a single seed, growing from a tiny patch into a sprawling botanical circuit.",
+    "accent": "#c8e99b",
+    "controls": [
+      [
+        "D-pad / Arrows",
+        "Choose root"
+      ],
+      [
+        "A / X / Space",
+        "Rotate clockwise"
+      ],
+      [
+        "B / Z",
+        "Undo"
+      ]
+    ],
+    "goal": "Connect every tile to the golden seed at the top-left. Complete five increasingly large gardens. No clock, no damage, and up to 64 moves of undo.",
+    "experiment": "Solvable spanning-tree generation, live network traversal, 16 connection patterns and palette-cycled growth.",
+    "order": 4,
+    "category": "puzzle"
+  },
+  {
+    "slug": "orbit-choir",
+    "title": "Orbit Choir",
+    "genre": "Orbital rhythm defense",
+    "tagline": "Make the stars sing.",
+    "description": "Conduct a cosmic chorus from a ship circling a blue planet. Rotate into position and strike each incoming note as it lights up on your orbital ring.",
+    "accent": "#ffc598",
+    "controls": [
+      [
+        "\u2190 \u2192",
+        "Orbit"
+      ],
+      [
+        "A / X / Space",
+        "Strike a note"
+      ],
+      [
+        "B / Z",
+        "Harmony nova"
+      ]
+    ],
+    "goal": "Hit mint notes when they reach your ring. Eight hits charge a nova that clears notes and repairs a heart. Protect the planet for sixty seconds.",
+    "experiment": "Eight-lane polar motion, timing windows, note-mapped synthesis, combo scoring and palette pulses.",
+    "order": 5,
+    "category": "action"
+  },
+  {
+    "slug": "hello-dot",
+    "title": "Hello Dot",
+    "genre": "Spark-chasing arcade",
+    "tagline": "Small dot. Big hello.",
+    "description": "The tiny arcade game that started it all. Chase mint sparks, dash through pink bugs, and turn a chain of little hellos into a screen-clearing celebration.",
+    "accent": "#f8d541",
+    "controls": [
+      [
+        "D-pad / Arrows",
+        "Move"
+      ],
+      [
+        "A / X / Space",
+        "Dash"
+      ],
+      [
+        "B / Z",
+        "Slow down"
+      ]
+    ],
+    "goal": "Chase sparks for sixty seconds. Five sparks trigger a HELLO burst, every second burst repairs a heart, and quick chains build up to \u00d78.",
+    "experiment": "Sprite animation, collision detection, timed combos, procedural spawns and four-channel audio.",
+    "order": 6,
+    "category": "action"
+  },
+  {
+    "slug": "dot-swarm",
+    "title": "Dot Swarm",
+    "genre": "Neon snake arena",
+    "tagline": "Glow. Grow. Go.",
+    "description": "A neon Tokyo arena of Codex dots, dressed for OpenAI DevDay. Collect gold sparks, outmaneuver three rival swarms, and spend your tail for a burst of speed.",
+    "accent": "#00e8ed",
+    "controls": [
+      [
+        "D-pad / Arrows",
+        "Steer in eight directions"
+      ],
+      [
+        "A / X / Space",
+        "Boost, spending tail length"
+      ]
+    ],
+    "goal": "Reach 48 dots. Your own trail is safe; rivals and arena walls end the run. Normal movement has been tuned to a gentler pace.",
+    "experiment": "A scrolling arena, directional dot faces, pulsing trails, animated sparks, and computer-controlled rivals.",
+    "order": 7,
+    "cover": "illustrated",
+    "art": "art/cover-illustrated-v1.png",
+    "category": "action"
+  },
+  {
+    "slug": "stormkite",
+    "title": "Stormkite",
+    "genre": "Parallax shooter",
+    "tagline": "Ride the thunder.",
+    "description": "A storm with a mind of its own is rolling over the lantern festival. Fly a paper kite above the harbor rooftops, pop storm wisps with darts, catch lanterns to charge your gust, and break the Thunderhead.",
+    "accent": "#ff9a7a",
+    "controls": [
+      [
+        "D-pad / Arrows",
+        "Fly"
+      ],
+      [
+        "A / X / Space",
+        "Fire darts (hold)"
+      ],
+      [
+        "B / Z",
+        "Release a gust"
+      ]
+    ],
+    "goal": "Survive three waves over the harbor, then defeat the Thunderhead. Lanterns and defeated storm spirits charge the gust, which clears every bolt and damages everything on screen. Five hearts.",
+    "experiment": "Scanline-interrupt parallax: three background bands read one seamless harbor map at different scroll speeds while the HUD rows stay pinned. Lightning and the dusk-to-storm sky are palette changes timed to vertical blank.",
+    "order": 8,
+    "category": "action",
+    "cover": "illustrated",
+    "art": "art/cover-illustrated-v1.png"
+  },
+  {
+    "slug": "comet-links",
+    "title": "Comet Links",
+    "genre": "Gravity mini golf",
+    "tagline": "Every planet pulls.",
+    "description": "Nine holes across an asteroid belt where every planet bends your putt. Slingshot around moons, ride the solar wind, skirt black holes, and sink a tiny comet into each wormhole cup.",
+    "accent": "#8fe3ff",
+    "controls": [
+      [
+        "\u2190 \u2192",
+        "Aim"
+      ],
+      [
+        "\u2191 \u2193",
+        "Power"
+      ],
+      [
+        "A / X / Space",
+        "Putt"
+      ],
+      [
+        "B / Z",
+        "Scope the true path"
+      ]
+    ],
+    "goal": "Sink all nine holes in as few strokes as you can; the course par is 31. The scope traces the real path, gravity included. You start with three and earn one for every birdie.",
+    "experiment": "A course compiler folds planets, black holes and wind into a force vector for every tile, so the cartridge physics is integer addition. The scope runs that same physics ahead, so its prediction is exact.",
+    "order": 9,
+    "category": "puzzle",
+    "cover": "illustrated",
+    "art": "art/cover-illustrated-v1.png"
+  },
+  {
+    "slug": "prism-well",
+    "title": "Prism Well",
+    "genre": "Falling crystal puzzle",
+    "tagline": "Line up the light.",
+    "description": "Crystals of colored light fall into an old mine well. Cycle each trio, line up three or more in any direction, and let the cascades break the ancient stone at the bottom.",
+    "accent": "#f5a3d6",
+    "controls": [
+      [
+        "\u2190 \u2192",
+        "Move"
+      ],
+      [
+        "A / X / Space",
+        "Cycle colors down"
+      ],
+      [
+        "B / Z",
+        "Cycle colors up"
+      ],
+      [
+        "\u2191 / \u2193",
+        "Drop / soft drop"
+      ]
+    ],
+    "goal": "Shatter 30 lights in the first well, then break every stone in four deeper wells. Every twentieth piece is a prism that clears every crystal of the color it lands on.",
+    "experiment": "Four-direction match scanning, animated gravity cascades, chain scoring, a distinct glyph for every color, and wave-channel chimes that climb with each chain.",
+    "order": 10,
+    "category": "puzzle",
+    "cover": "illustrated",
+    "art": "art/cover-illustrated-v1.png"
+  }
+]

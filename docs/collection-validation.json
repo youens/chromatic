@@ -1,0 +1,110 @@
+[
+  {
+    "game": "neon-wake",
+    "cartridge": "valid",
+    "updates_per_120_frames": 60,
+    "pause": "pass",
+    "full_round": {
+      "won": true,
+      "score": 7500
+    }
+  },
+  {
+    "game": "moonthread",
+    "cartridge": "valid",
+    "updates_per_120_frames": 60,
+    "pause": "pass",
+    "campaign": {
+      "won": true,
+      "room": 7,
+      "score": 5400,
+      "hearts": 3,
+      "ticks": 995,
+      "stars": 7
+    }
+  },
+  {
+    "game": "echo-vault",
+    "cartridge": "valid",
+    "updates_per_120_frames": 60,
+    "pause": "pass",
+    "campaign": {
+      "won": true,
+      "vault": 5,
+      "turns": 549,
+      "hearts": 2
+    }
+  },
+  {
+    "game": "bloom-circuit",
+    "cartridge": "valid",
+    "updates_per_120_frames": 60,
+    "pause": "pass",
+    "full_campaign": "five gardens solved through joypad"
+  },
+  {
+    "game": "orbit-choir",
+    "cartridge": "valid",
+    "updates_per_120_frames": 60,
+    "pause": "pass",
+    "full_round": {
+      "hits": 80,
+      "score": 28000
+    }
+  },
+  {
+    "game": "stormkite",
+    "cartridge": "valid",
+    "updates_per_120_frames": 60,
+    "pause": "pass",
+    "parallax_shift_8_frames": {
+      "hud": 0,
+      "far": 2,
+      "city": 4,
+      "rooftops": 8
+    },
+    "full_flight": {
+      "won": true,
+      "score": 10390,
+      "hearts": 5,
+      "kills": 77,
+      "ticks": 2680
+    }
+  },
+  {
+    "game": "comet-links",
+    "cartridge": "valid",
+    "updates_per_120_frames": 60,
+    "pause": "pass",
+    "full_course": {
+      "strokes": [
+        2,
+        2,
+        1,
+        2,
+        1,
+        1,
+        4,
+        2,
+        3
+      ],
+      "par": 31,
+      "physics_mismatches": 0,
+      "score": 6400
+    }
+  },
+  {
+    "game": "prism-well",
+    "cartridge": "valid",
+    "updates_per_120_frames": 60,
+    "pause": "pass",
+    "campaign": {
+      "won": true,
+      "wells": 5,
+      "pieces": 95,
+      "lights": 240,
+      "best_chain": 2,
+      "score": 32922
+    }
+  }
+]

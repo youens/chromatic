@@ -1,0 +1,6 @@
+/hello-dot.gbc
+  Content-Type: application/octet-stream
+  Content-Disposition: attachment; filename="hello-dot.gbc"
+
+/vendor/binjgb.wasm
+  Content-Type: application/wasm
