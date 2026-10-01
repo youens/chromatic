@@ -1369,6 +1369,7 @@ void dw_start(void) BANKED {
   dw_phase = P_INTRO;
   dw_phase_t = 0;
   for (i = 0; i < DW_FOES; ++i) dw_foes[i].hp = 0;
+  memset(foe_draw, 0, sizeof(foe_draw));   /* no rivals left from last sortie */
   for (i = 0; i < DW_SHOTS; ++i) dw_shots[i].on = 0;
   for (i = 0; i < DW_BULLETS; ++i) dw_bullets[i].on = 0;
   for (i = 0; i < DW_DROPS; ++i) dw_drops[i].on = 0;

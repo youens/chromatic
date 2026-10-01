@@ -467,10 +467,26 @@ def main():
         # not repeat that credit when ended through the actual pause menu.
         bank = word("dw_profile", 9)
         launch()
+        until(lambda: len(live("dw_foes", FOES, FOE)) >= 2, limit=900)
         end_sortie()
         check(word("dw_profile", 9) == bank,
               "Ending an empty sortie after the shop cannot duplicate prior credits")
-        launch()
+        # Watch every frame of the next launch's fade-in, which happens
+        # before the ROM samples input again.
+        fleet = range(IDS["DW_S_FLEET"], IDS["DW_S_FLEET"] + 32)
+        rivals = frames = 0
+        run(1)
+        until(lambda: get("dw_keys") == 0)
+        run(1, ["start"])
+        until(lambda: get("dw_state") == TAKEOFF, keys=["start"])
+        while frames < 3 or get("dw_fade") < 8:
+            rivals += sum(1 for i in range(0, 160, 4)
+                          if p.memory[0xFE00 + i] and p.memory[0xFE00 + i + 2] in fleet)
+            run(1)
+            frames += 1
+        check(rivals == 0 and frames > 8,
+              "No rivals from the previous sortie appear during the takeoff fade-in")
+        until(lambda: get("dw_state") == FLIGHT, limit=400)
         check(p.memory[0xFF4A] == 128 and p.memory[0xFF40] & 0x20,
               "A sortie after one ended from the pause menu keeps the HUD at the bottom")
         end_sortie()
