@@ -4,6 +4,8 @@ Covers the cartridge header, the launcher's intro, shelf, info and records
 screens, the fixed header during a shelf slide, launching and returning from
 every game twice, a real Neon Wake best score, save RAM surviving a power
 cycle, erasing the records, and carrying both historical save layouts forward.
+Games whose arrays share the upper work RAM slot are launched over scribbled
+memory and must rebuild them, and the stack must stay clear of that slot.
 """
 from pathlib import Path
 import hashlib
@@ -24,6 +26,18 @@ symbols = {k: int(v, 16) for k, v in re.findall(r'DEF (_\w+) 0x([\da-fA-F]+)', (
 GAMES = ['neon-wake', 'moonthread', 'echo-vault', 'bloom-circuit', 'orbit-choir', 'hello-dot', 'stormkite', 'comet-links', 'prism-well', 'dot-swarm', 'dreambase-invaders', 'dotwing']
 LAST = len(GAMES) - 1
 HELLO = 5
+# Upper work RAM shared by whichever game runs. Arrays each game's reset
+# must rebuild from scratch, whatever another game left there.
+OVERLAYS = json.loads((BUILD / 'overlays.json').read_text())
+SLOT, STACK_FLOOR, SCRIBBLE = 0xD800, 0xDC00, 0xA5
+REBUILT = {'echo-vault': ['g2_maze', 'g2_seen'],
+           'bloom-circuit': ['g3_board', 'g3_solution', 'g3_powered', 'g3_visit'],
+           'prism-well': ['g7_board', 'g7_marks'],
+           'dot-swarm': ['g8_snakes', 'g8_fx', 'g8_fy']}
+assert set(REBUILT) == set(OVERLAYS)
+for slug, arrays in OVERLAYS.items():
+    for name, (address, size) in arrays.items():
+        assert symbols['_' + name] == address and SLOT <= address and address + size <= STACK_FLOOR, name
 p = None
 held = set()
 
@@ -92,6 +106,23 @@ def shot(name):
     p.screen.image.save(BUILD / f'{name}.png')
 
 
+def scribble_slot():
+    for address in range(SLOT, STACK_FLOOR):
+        p.memory[address] = SCRIBBLE
+
+
+def check_rebuilt(slug):
+    """After a game starts, the arrays its reset fills hold no scribble."""
+    for name in REBUILT[slug]:
+        address, size = OVERLAYS[slug][name]
+        data = bytes(p.memory[address:address + size])
+        assert SCRIBBLE not in data, (slug, name, 'kept memory from before the launch')
+    if slug == 'echo-vault':
+        maze = bytes(p.memory[symbols['_g2_maze']:symbols['_g2_maze'] + 247])
+        border = [maze[y * 19 + x] for y in range(13) for x in range(19) if x in (0, 18) or y in (0, 12)]
+        assert set(maze) <= {0, 1} and all(border) and maze[20] == 0, 'echo vault maze generated'
+
+
 def signed(name, offset=0):
     v = word(name, offset)
     return v - 65536 if v >= 32768 else v
@@ -118,6 +149,12 @@ boot(bytes([0xFF]) * 8192)
 try:
     run(120)
     assert get('launcher_mode') == 0 and get('arcade_in_game') == 0, 'intro'
+    # Paint the stack's room below the launcher's own frames; whatever the
+    # games and interrupts overwrite marks the deepest the stack reached.
+    paint_top = p.register_file.SP - 64
+    assert STACK_FLOOR < paint_top < 0xE000
+    for address in range(STACK_FLOOR, paint_top):
+        p.memory[address] = 0x5C
     shot('launcher-intro')
     press('start')
     run(20)
@@ -137,6 +174,8 @@ try:
     for cycle in range(2):
         for i, slug in enumerate(GAMES):
             assert get('menu_index') == i, (slug, get('menu_index'))
+            if slug in OVERLAYS:
+                scribble_slot()
             press('a')
             run(10)
             assert get('arcade_in_game') == 1, (slug, 'launch')
@@ -250,6 +289,7 @@ try:
                 press('start')
                 run(20)
                 assert get(state) in (2,4), ('dot swarm play',get(state))
+                check_rebuilt(slug)
                 shot('dot-swarm-play')
                 run(60,['start','select']);run(60);settle()
                 assert get('arcade_in_game')==0 and get('launcher_mode')==1
@@ -260,6 +300,8 @@ try:
             press('start')
             run(60)
             assert get(state) == 2, (slug, 'play')
+            if slug in OVERLAYS:
+                check_rebuilt(slug)
             if i != HELLO:
                 before_ticks = word('ticks')
                 run(120)
@@ -311,6 +353,10 @@ try:
     assert (before != p.screen.ndarray).any(), 'records second page'
     shot('launcher-records-page-2')
     press('b')
+    painted = bytes(p.memory[STACK_FLOOR:paint_top])
+    deepest = STACK_FLOOR + next((n for n, v in enumerate(painted) if v != 0x5C), len(painted))
+    assert deepest > STACK_FLOOR + 64, ('stack reached the shared slot', hex(deepest))
+    stack_depth = 0xE000 - deepest
     saved = io.BytesIO()
 finally:
     p.stop(ram_file=saved)
@@ -364,7 +410,11 @@ for version, count in ((2, 10), (3, 11)):
     'sha256': hashlib.sha256(data).hexdigest(),
     'neon_wake_saved_best': earned,
     'historical_saves_migrated': migrated,
+    'upper_wram_overlays': OVERLAYS,
+    'max_stack_bytes': stack_depth,
+    'stack_room_bytes': 0xE000 - STACK_FLOOR,
     'tests': results,
 }, indent=2) + '\n')
 print(f'PASS: launcher, {len(GAMES)} games launched twice, saved best {earned} survived a power cycle, '
-      'erase, version 2 and 3 save migration, header and checksums')
+      'erase, version 2 and 3 save migration, header and checksums, shared-slot arrays rebuilt over '
+      f'scribbled memory, deepest stack {stack_depth} of {0xE000 - STACK_FLOOR} bytes')

@@ -59,43 +59,65 @@ higher score when it returns. Hello Dot works the same way through
 
 ## Build and test
 
-From this directory, run `make release`. This builds every standalone game,
-generates the banked collection, runs the PyBoy integration test, and copies the
-verified ROM, its SHA-256 checksum, and the launcher screenshots into `dist/`
-and `art/`.
+From this directory, run `make release`. This builds every game's standalone
+ROM and generated headers (without running their tests, which rewrite tracked
+screenshots), generates the banked collection, runs the PyBoy integration
+test, and copies the verified ROM, its SHA-256 checksum, and the launcher
+screenshots into `dist/` and `art/`.
 
 The build uses the pinned GBDK toolchain in the repository's `.tools` directory.
 The standalone games remain separate releases. Generated translation units
-are in `build/`; edit `tools/build.py`, `tools/launcher_art.py`, `src/menu.c` or
-the original game sources instead.
+are in `build/`; edit `tools/build.py`, `tools/launcher_art.py`,
+`src/menu.c`, `src/shelf.c` or the original game sources instead.
 
-The 512 KiB cartridge uses all 32 banks:
+The 512 KiB cartridge has 32 banks:
 
 | Bank | Contents |
 | --- | --- |
-| 0 | Launcher, shared runtime, game dispatch, Stormkite's scanline interrupt handlers, Dreambase Invaders' fixed helpers (`fixed.c`) and Dotwing's VBlank sound hook (`vbl.c`) |
-| 1–18 | Code, then graphics, for each of the nine shared-runtime games |
+| 0 | Shared runtime, game dispatch, the launcher's entry point and scanline interrupt handlers (`src/shelf.c`), Stormkite's scanline interrupt handlers, Dreambase Invaders' fixed helpers (`fixed.c`) and Dotwing's VBlank sound hook (`vbl.c`) |
+| 1–18 | Code and graphics modules of the nine shared-runtime games, packed together by GBDK's `bankpack`; about seven banks are used and the rest stay empty for future games |
 | 19–20 | Hello Dot, which keeps its own engine |
 | 21 | Launcher tiles and icons |
 | 22–25 | Dreambase Invaders, which keeps its own engine: frame loop and sound, screens, gameplay, graphics |
 | 26–31 | Dotwing, which keeps its own engine with the same module pairs as its standalone cartridge: frame loop, sound and sectors 1–2; screens and sectors 3–4; flight; loaders and title art; helpers, saves and rival AI; scenery streaming and bosses |
-| 31 | Also launcher record checksums, battery transfers and historical save migrations |
+| 31 | Also the launcher (`src/menu.c`): drawing, menus, screen setup, its text tables and the battery records |
+
+The build fails if any bank overflows or two areas overlap (the linker only
+warns), and prints how many of banks 1–18 are empty.
 
 `tools/build.py` finds every symbol a game defines by reading SDCC's own
 assembly output, then gives it a `g<N>_` prefix. Games therefore link
 together without hand-kept symbol lists. Dreambase Invaders is compiled with
 `ARCADE` defined, which turns its `main` into `dreambase_run` and adds the
 Start + Select check; its globals already carry `db_`, `pl_`, `pr_` and `pk_`
-prefixes. It keeps its large buffers in the `0xD000` area, which no other game
-uses while it runs. Dotwing is also compiled with `ARCADE`, using
-`dotwing_run` and the same Start + Select return. Its large buffers reuse the
-reserved `0xD000` region while it runs. The build fails if combined ordinary
-work RAM reaches that region. Returning to the launcher undoes any hardware a game claimed: its
-interrupt handlers, scroll registers, sprite size and sound.
+prefixes. Dotwing is also compiled with `ARCADE`, using `dotwing_run` and
+the same Start + Select return. Returning to the launcher undoes any
+hardware a game claimed: its interrupt handlers, scroll registers, sprite
+size and sound.
+
+Low work RAM (`0xC000`–`0xCFFF`) holds every game's ordinary globals all the
+time, so large buffers live in upper work RAM instead, which only the
+running game uses:
+
+| Range | While it runs |
+| --- | --- |
+| `0xD000`–`0xD7FF` | Shared-runtime games and the launcher: screen tiles and colours. Dreambase Invaders: map, attributes, actors, palettes (to `0xD7DF`) |
+| `0xD800`–`0xDBFF` | Shared-runtime games: the arrays `tools/build.py` moves out of low work RAM (Echo Vault's maze, seen, stack and distance map; Dot Swarm's snakes and food; Bloom Circuit's boards and undo history; Prism Well's board and marks) |
+| `0xD000`–`0xDBFF` | Dotwing: buffers, actor pools, palettes and scenery tables |
+| `0xDC00`–`0xDFFF` | The stack, for everyone |
+
+The build moves each listed array with `__at` and leaves the standalone
+games untouched. Every moved array is rebuilt by its game's reset or written
+before it is read, so a launch never depends on what another game left
+there. The build fails if ordinary globals reach `0xD000` or a game's moved
+arrays pass `0xDBFF`, and reports the low work RAM left.
 
 The emulator test checks the header and checksums, and the intro, shelf,
-game card and Hall of Light screens. It checks that the header stays fixed
-during a slide, and that selection wraps both ways. It launches every game
+game card and Hall of Light screens. It fills `0xD800`–`0xDBFF` with a
+pattern before launching each game that uses it and confirms the game
+rebuilt its arrays, and it paints the stack's room to confirm the deepest
+stack use (about 150 bytes) stays far above `0xDC00`. It checks that the
+header stays fixed during a slide, and that selection wraps both ways. It launches every game
 twice, checking help, gameplay, the 30 Hz update rate of the
 shared-runtime games, pause and resume, and the return. For Dreambase
 Invaders it checks the brand splash, title, instructions, movement at 60 Hz,
