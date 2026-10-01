@@ -44,9 +44,10 @@ Well use pixel posters built from their own tiles. Actual screenshots appear on
 the play pages. `chromatic-arcade-roms.zip` contains every standalone
 cartridge, the anthology cartridge and the GBDK runtime license.
 
-The homepage share image, `web/chromatic-share-v1.jpg`, still reads "Six little
-worlds". Its text is part of the generated illustration, so it needs a new
-version rather than an edit.
+The homepage hero and the homepage and collection player's share metadata use
+the same evergreen artwork, `web/chromatic-fun-share-v3.jpg`, with the line
+"One cartridge, many games". The hero shows the full image and links to the
+collection's game menu. Individual game pages use their own cover artwork.
 
 binjgb comes from the original Hello Dot vendor directory with its MIT license.
 Cover art generation prompts are documented in each game's `art/README.md`.
