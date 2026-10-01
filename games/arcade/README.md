@@ -73,14 +73,13 @@ The 512 KiB cartridge uses all 32 banks:
 
 | Bank | Contents |
 | --- | --- |
-| 0 | Launcher, shared runtime, game dispatch, Stormkite's scanline interrupt handlers, and the native games' fixed helpers (`fixed.c`) |
+| 0 | Launcher, shared runtime, game dispatch, Stormkite's scanline interrupt handlers, Dreambase Invaders' fixed helpers (`fixed.c`) and Dotwing's VBlank sound hook (`vbl.c`) |
 | 1–18 | Code, then graphics, for each of the nine shared-runtime games |
 | 19–20 | Hello Dot, which keeps its own engine |
 | 21 | Launcher tiles and icons |
 | 22–25 | Dreambase Invaders, which keeps its own engine: frame loop and sound, screens, gameplay, graphics |
-| 26–29 | Dotwing, which keeps its own engine: frame loop and sound, screens, gameplay, graphics |
-| 30 | Dotwing helpers and battery-save transfers; a small text bridge remains in bank 0 |
-| 31 | Launcher record checksums, battery transfers and historical save migrations |
+| 26–31 | Dotwing, which keeps its own engine with the same module pairs as its standalone cartridge: frame loop, sound and sectors 1–2; screens and sectors 3–4; flight; loaders and title art; helpers, saves and rival AI; scenery streaming and bosses |
+| 31 | Also launcher record checksums, battery transfers and historical save migrations |
 
 `tools/build.py` finds every symbol a game defines by reading SDCC's own
 assembly output, then gives it a `g<N>_` prefix. Games therefore link

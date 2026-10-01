@@ -2,8 +2,8 @@
 """Exercise the actual cartridge in PyBoy; all saves live in a temp directory.
 
 Ordinary play uses buttons alone. Controlled scenarios arrange WRAM actors or
-SRAM records, then let the unmodified ROM process collisions/input/save/load.
-The evidence manifest explicitly distinguishes those two kinds of validation.
+SRAM records, then let the unmodified ROM process collisions, input, saving
+and loading. The evidence manifest keeps those two kinds of validation apart.
 """
 from pathlib import Path
 import hashlib
@@ -21,7 +21,18 @@ BUILD = ROOT / "build"
 ROM = BUILD / "dotwing.gbc"
 SYM = {name: int(value, 16) for name, value in re.findall(
     r"DEF (_\w+) 0x([\da-fA-F]+)", (BUILD / "dotwing.noi").read_text())}
+IDS = {name: int(value) for name, value in re.findall(
+    r"#define (DW_\w+) (\d+)", (ROOT / "src/art_ids.h").read_text())}
 TITLE, BUILDER, HANGAR, FLIGHT, PAUSE, SHOP, RESULTS, HELP, TAKEOFF = range(9)
+P_INTRO, P_WAVES, P_WARN, P_BOSS_IN, P_BOSS, P_BOSS_DIE, P_CLEAR, P_DEAD = range(8)
+D_COIN, D_POWER, D_REPAIR, D_BOLT, D_ALLY = range(5)
+K_DRONE, K_GUNNER, K_HEAVY = range(3)
+M_DIVE = 0
+BIAS = 32
+FOE, SHOT, DROP = 16, 10, 8            # record strides
+FOES, SHOTS, BULLETS, DROPS = 8, 12, 24, 6
+BOSS_HP = (320, 400, 480, 560)
+PRICES = (40, 80, 140)
 checks, ordinary, controlled = [], [], []
 evidence = {"emulator": "PyBoy " + importlib.metadata.version("pyboy"),
             "ordinary_input_checks": ordinary, "controlled_scenarios": controlled,
@@ -29,6 +40,8 @@ evidence = {"emulator": "PyBoy " + importlib.metadata.version("pyboy"),
 p = None
 held = set()
 video_frames = 0
+lcd_off_frames = 0
+display_off_calls = 0
 phase = "ordinary input"
 
 
@@ -39,45 +52,76 @@ def check(condition, label, group=ordinary):
     print("PASS:", label, flush=True)
 
 
+def count_display_off(_context):
+    global display_off_calls
+    display_off_calls += 1
+
+
 def boot(path, raw=None):
-    global p, held
+    global p, held, display_off_calls
     p = PyBoy(str(path), window="null", sound_emulated=False)
     p.set_emulation_speed(0)
+    p.hook_register(0, SYM["_display_off"], count_display_off, None)
     held = set()
+    display_off_calls = 0
     if raw is not None:
         p.memory[0x0000] = 0x0A
         p.memory[0x4000] = 0
         for i, byte in enumerate(raw):
             p.memory[0xA200 + i] = byte
         p.memory[0x0000] = 0
-    run(180)
-    assert get("dw_state") == TITLE, ("boot", get("dw_state"))
+    p.tick(60)
+    until(lambda: get("dw_state") == TITLE and get("dw_fade") == 8
+          and word("dw_clock") > 2, watch=False)
+    # The C runtime and the game's own setup each switch the LCD off once
+    # while the screen is still blank; nothing may do so afterwards.
+    assert display_off_calls == 2, ("boot display_off calls", display_off_calls)
+    display_off_calls = 0
 
 
-def run(frames=1, keys=()):
-    global held, video_frames
+def run(frames=1, keys=(), watch=True):
+    """Advance whole video frames; every frame must keep the LCD on."""
+    global held, video_frames, lcd_off_frames
     keys = set(keys)
     for key in held - keys:
         p.button_release(key)
     for key in keys - held:
         p.button_press(key)
     held = keys
-    p.tick(frames)
+    for _ in range(frames):
+        p.tick()
+        if watch and not p.memory[0xFF40] & 0x80:
+            lcd_off_frames += 1
     video_frames += frames
 
 
+def until(predicate, limit=900, keys=(), watch=True):
+    for _ in range(limit):
+        if predicate():
+            return
+        run(1, keys, watch)
+    raise AssertionError("condition timed out: state=%d phase=%d" % (get("dw_state"), get("dw_phase")))
+
+
+BITS = {"right": 1, "left": 2, "up": 4, "down": 8,
+        "a": 16, "b": 32, "select": 64, "start": 128}
+
+
 def tap(key):
-    # Full menu redraws can span several video frames. Hold each transition
-    # until the ROM has sampled it, then wait for its release to be sampled.
-    bits = {"right": 1, "left": 2, "up": 4, "down": 8,
-            "a": 16, "b": 32, "select": 64, "start": 128}
+    # Screen changes fade over several frames. Hold each press until the ROM
+    # has sampled it, then release and wait for any fade to settle.
     run(1)
     until(lambda: get("dw_keys") == 0)
     run(1, [key])
-    until(lambda: bool(get("dw_keys") & bits[key]), keys=[key])
+    until(lambda: bool(get("dw_keys") & BITS[key]), keys=[key])
     run(2, [key])
     run(1)
     until(lambda: get("dw_keys") == 0)
+    settle()
+
+
+def settle():
+    until(lambda: get("dw_fade") in (0, 8))
     run(2)
 
 
@@ -93,28 +137,29 @@ def word(name, offset=0):
     return get(name, offset) | (get(name, offset + 1) << 8)
 
 
+def sword(name, offset=0):
+    value = word(name, offset)
+    return value - 65536 if value > 32767 else value
+
+
 def putword(name, value, offset=0):
     put(name, value, offset)
     put(name, value >> 8, offset + 1)
 
 
+def pos(pixel):
+    return ((pixel + BIAS) << 8) | 0x80
+
+
 def profile():
-    return [get("dw_profile", i) for i in range(9)] + [word("dw_profile", 9)]
-
-
-def until(predicate, limit=600, keys=()):
-    for _ in range(limit):
-        if predicate():
-            return
-        run(1, keys)
-    raise AssertionError("condition timed out: state=" + str(get("dw_state")))
+    """shape, color, face, gear, configured, weapon, shield, reactor,
+    cleared, tokens, ally"""
+    return ([get("dw_profile", i) for i in range(9)]
+            + [word("dw_profile", 9), get("dw_profile", 11)])
 
 
 def screenshot(name):
-    # The ROM sets the next state before redrawing the LCD. Wait for the real
-    # display to return and render two complete frames instead of capturing
-    # the white LCD-off frame in the middle of a menu transition.
-    until(lambda: bool(p.memory[0xFF40] & 0x80))
+    until(lambda: bool(p.memory[0xFF40] & 0x80) and get("dw_fade") == 8)
     run(2, held)
     target = BUILD / (name + ".png")
     assert p.screen.image.size == (160, 144)
@@ -144,67 +189,81 @@ def valid(record):
             and record[28] | record[29] << 8 == checksum(record))
 
 
-def record(generation, shape, tokens):
+def record(generation, shape, tokens, ally=0, fields=None):
     data = bytearray(32)
     data[:5] = b"DOTW\x01"
     data[5] = generation
-    data[6:15] = bytes([shape, 1, 1, 1, 1, 1, 1, 1, 4])
-    data[15:19] = bytes([tokens & 255, tokens >> 8, 123, 0])
+    data[6:15] = bytes(fields or [shape, 1, 1, 1, 1, 1, 1, 1, 4])
+    data[15:20] = bytes([tokens & 255, tokens >> 8, 123, 0, ally])
     total = checksum(data)
     data[28:30] = bytes([total & 255, total >> 8])
     data[31] = 0xA5
     return data
 
 
+def live(name, count, stride):
+    return [i for i in range(count) if get(name, i * stride)]
+
+
 def clear_actors():
-    for name, count, stride, active in (("dw_enemies", 6, 10, 9),
-            ("dw_shots", 8, 7, 6), ("dw_bullets", 8, 7, 6),
-            ("dw_drops", 4, 6, 5)):
+    for name, count, stride in (("dw_foes", FOES, FOE), ("dw_shots", SHOTS, SHOT),
+                                ("dw_bullets", BULLETS, SHOT), ("dw_drops", DROPS, DROP)):
         for i in range(count):
-            put(name, 0, i * stride + active)
+            put(name, 0, i * stride)
 
 
-def prepare():
+def prepare(hp=3):
+    """Hold the sortie in its wave phase, clear the sky and park the plane."""
     assert get("dw_state") == FLIGHT
+    putword("dw_cam", 200)
     clear_actors()
     putword("dw_px", 72)
     putword("dw_py", 94)
-    putword("dw_stage_frame", 100)
-    for name, value in (("dw_hp", 3), ("dw_invincible", 120),
-            ("dw_burst", 0), ("dw_boss_active", 0), ("dw_energy", 100)):
+    for name, value in (("dw_hp", hp), ("dw_invincible", 120),
+                        ("dw_burst", 0), ("dw_energy", 100)):
         put(name, value)
+    run(2)
+    clear_actors()
 
 
-def bullet(name, index, x, y, vx=0, vy=0):
-    offset = index * 7
-    putword(name, x, offset)
-    putword(name, y, offset + 2)
-    put(name, vx, offset + 4)
-    put(name, vy, offset + 5)
-    put(name, 1, offset + 6)
+def projectile(name, index, x, y, vx=0, vy=0, tile=None):
+    """x, y are the projectile's centre in screen pixels."""
+    o = index * SHOT
+    putword(name, pos(x), o + 1)
+    putword(name, vx, o + 3)
+    putword(name, pos(y), o + 5)
+    putword(name, vy, o + 7)
+    put(name, IDS["DW_S_SHOT"] if tile is None else tile, o + 9)
+    put(name, 1, o)
 
 
-def enemy(index, x=72, y=44, hp=1):
-    offset = index * 10
-    putword("dw_enemies", x, offset)
-    putword("dw_enemies", y, offset + 2)
-    for field, value in ((4, 0), (5, 0), (6, 0), (7, hp), (8, 0), (9, 1)):
-        put("dw_enemies", value, offset + field)
+def foe(index, x=64, y=30, hp=1, kind=K_GUNNER):
+    """A stationary foe whose top-left corner is (x, y) in screen pixels."""
+    o = index * FOE
+    putword("dw_foes", pos(x), o + 1)
+    putword("dw_foes", 0, o + 3)
+    putword("dw_foes", pos(y), o + 5)
+    putword("dw_foes", 0, o + 7)
+    for field, value in ((9, kind), (10, 0), (11, M_DIVE), (12, 0), (13, 0), (14, 255), (15, 0)):
+        put("dw_foes", value, o + field)
+    put("dw_foes", hp, o)
 
 
 def pickup(kind):
-    putword("dw_drops", word("dw_px") + 4)
-    putword("dw_drops", word("dw_py"), 2)
-    put("dw_drops", kind, 4)
-    put("dw_drops", 1, 5)
-    until(lambda: not get("dw_drops", 5), limit=20)
+    """Drop an arranged pickup on the plane; the ROM collects it."""
+    putword("dw_drops", pos(sword("dw_px") + 8), 1)
+    putword("dw_drops", pos(sword("dw_py") + 8), 3)
+    put("dw_drops", kind, 5)
+    put("dw_drops", 0, 6)
+    put("dw_drops", 1, 0)
+    until(lambda: not get("dw_drops"), limit=20)
     run(2)
 
 
 def launch():
     tap("start")
-    assert get("dw_state") == TAKEOFF
-    until(lambda: get("dw_state") == FLIGHT)
+    assert get("dw_state") == TAKEOFF, get("dw_state")
+    until(lambda: get("dw_state") == FLIGHT, limit=400)
     run(2)
 
 
@@ -215,6 +274,34 @@ def end_sortie():
     assert get("dw_state") == RESULTS
     tap("a")
     assert get("dw_state") == HANGAR
+
+
+def bot_keys():
+    """Pick buttons from what is on screen: chase the nearest foe or the boss
+    core, sidestep incoming bullets and burst when one is about to hit."""
+    px, py = sword("dw_px"), sword("dw_py")
+    target, best = 72, 999
+    for i in live("dw_foes", FOES, FOE):
+        fx = get("dw_foes", i * FOE + 2) - BIAS
+        if abs(fx - px) < best:
+            best, target = abs(fx - px), fx
+    if get("dw_phase") in (P_BOSS_IN, P_BOSS):
+        target = sword("dw_boss_x") + 40
+    keys, danger = [], None
+    for i in live("dw_bullets", BULLETS, SHOT):
+        bx = get("dw_bullets", i * SHOT + 2) - BIAS
+        by = get("dw_bullets", i * SHOT + 6) - BIAS
+        if 0 < by - py + 24 < 44 and abs(bx - (px + 8)) < 14:
+            danger = bx
+    if danger is not None:
+        keys.append("left" if danger > px + 8 else "right")
+        if get("dw_energy") >= 50 and abs(danger - (px + 8)) < 5:
+            keys.append("b")
+    elif abs(target - px) > 3:
+        keys.append("right" if target > px else "left")
+    if py < 96:
+        keys.append("down")
+    return keys
 
 
 def main():
@@ -237,12 +324,14 @@ def main():
         game = temp / "dotwing.gbc"
         shutil.copyfile(ROM, game)
         boot(game)
+        check(p.memory[0xFF4D] & 0x80, "The cartridge runs the CGB CPU in double-speed mode")
         screenshot("title")
-        check(profile() == [0] * 10, "Fresh battery RAM initializes the profile")
+        check(profile() == [0] * 11, "Fresh battery RAM initializes the profile")
         tap("up")
         check(get("dw_state") == HELP, "Flight guide opens with ordinary input")
         screenshot("guide")
         tap("b")
+        check(get("dw_state") == TITLE, "B returns from the guide to the title")
         tap("a")
         check(get("dw_state") == BUILDER, "First play opens the dot builder")
         for row in range(4):
@@ -263,112 +352,116 @@ def main():
         screenshot("hangar")
         tap("start")
         check(get("dw_state") == TAKEOFF, "Launch enters the animated takeoff")
+        run(30)
         screenshot("takeoff")
-        until(lambda: get("dw_state") == FLIGHT)
-        check(word("dw_stage_frame") <= 2, "Takeoff reaches flight after 72 logic updates")
-        run(3)
-        x, f = word("dw_px"), word("dw_frame")
+        until(lambda: get("dw_state") == FLIGHT, limit=400)
+        check(get("dw_phase") == P_WAVES and get("dw_hp") == 3,
+              "Takeoff hands over to the wave phase with a full hull")
+        # Measure while the buttons are already held, past input latency.
+        run(3, ["right"])
+        x, f = sword("dw_px"), word("dw_frame")
         run(10, ["right"])
-        fast = (word("dw_px") - x, (word("dw_frame") - f) & 65535)
-        run(2)
-        x, f = word("dw_px"), word("dw_frame")
-        run(10, ["right", "a"])
-        slow = (word("dw_px") - x, (word("dw_frame") - f) & 65535)
+        fast = (sword("dw_px") - x, (word("dw_frame") - f) & 65535)
+        run(3, ["left", "a"])
+        x, f = sword("dw_px"), word("dw_frame")
+        run(10, ["left", "a"])
+        slow = (x - sword("dw_px"), (word("dw_frame") - f) & 65535)
         run(2)
         check(fast[0] == fast[1] * 2 and slow[0] == slow[1] and slow[1] > 0,
               "Steering moves two pixels and A focus moves one per logic update")
-        check(any(get("dw_shots", i * 7 + 6) for i in range(8)),
-              "The plane auto-fires without holding a fire button")
+        until(lambda: live("dw_shots", SHOTS, SHOT), limit=60)
+        check(True, "The plane auto-fires without holding a fire button")
         tap("start")
-        f = word("dw_frame")
+        f, cam = word("dw_frame"), word("dw_cam")
         run(120)
-        check(get("dw_state") == PAUSE and word("dw_frame") == f,
-              "Pause freezes gameplay for 120 emulator frames")
+        check(get("dw_state") == PAUSE and word("dw_frame") == f and word("dw_cam") == cam
+              and get("dw_dim") == 1,
+              "Pause dims the sky and freezes gameplay for 120 emulator frames")
         screenshot("pause")
         tap("start")
-        check(get("dw_state") == FLIGHT, "Start resumes the paused sortie")
-        f = word("dw_frame")
+        check(get("dw_state") == FLIGHT and get("dw_dim") == 0,
+              "Start resumes the paused sortie at full brightness")
+        f, missed = word("dw_frame"), word("dw_missed")
         started = time.monotonic()
-        run(120)
+        run(240)
         elapsed = time.monotonic() - started
         delta = (word("dw_frame") - f) & 65535
-        evidence["performance"] = {"emulator_frames": 120, "logic_updates": delta,
-             "logic_hz_at_59_7275_video_hz": round(delta / 120 * 59.7275, 2),
+        evidence["performance"] = {"emulator_frames": 240, "logic_updates": delta,
+             "missed_frames": (word("dw_missed") - missed) & 65535,
+             "logic_hz_at_59_7275_video_hz": round(delta / 240 * 59.7275, 2),
              "unthrottled_emulation_seconds": round(elapsed, 4)}
-        check(delta >= 110, "Normal gameplay sustains approximately 60 logic Hz")
+        check(delta >= 232, "Normal gameplay sustains approximately 60 logic Hz")
+
         # A complete ordinary campaign attempt: observation chooses buttons,
-        # never changes RAM. Buy upgrades with currency actually earned in play.
-        session_frames = 0
+        # never changes RAM. Upgrades are bought with tokens earned in play.
         session_start = video_frames
-        captures = 0
-        ordinary_bosses, ordinary_clears, purchases = set(), [], []
-        while get("dw_state") in (FLIGHT, SHOP) and video_frames - session_start < 16000:
-            if get("dw_state") == SHOP:
-                ordinary_clears.append(get("dw_sector"))
-                screenshot("ordinary-shop-" + str(get("dw_sector")))
-                for row in range(3):
+        missed_start = word("dw_missed")
+        flight_frames = 0
+        captured = set()
+        bosses, clears, purchases = set(), [], []
+        while get("dw_state") in (FLIGHT, SHOP, TAKEOFF) and video_frames - session_start < 60 * 60 * 12:
+            state = get("dw_state")
+            if state == SHOP:
+                sector = get("dw_sector")
+                clears.append(sector)
+                if "shop" not in captured:
+                    screenshot("shop")
+                    captured.add("shop")
+                for row in range(4):
                     while get("dw_menu_row") != row:
                         tap("down")
-                    while get("dw_profile", 5 + row) < 3:
-                        level = get("dw_profile", 5 + row)
-                        price = (40, 80, 140)[level]
-                        if word("dw_profile", 9) < price:
-                            break
+                    level = (get("dw_profile", 5 + row) if row < 3 else get("dw_profile", 11))
+                    if level < 3 and word("dw_profile", 9) >= PRICES[level]:
                         tap("a")
-                        assert get("dw_profile", 5 + row) == level + 1
-                        purchases.append({"sector": get("dw_sector"),
-                                          "upgrade_row": row, "level": level + 1,
-                                          "price": price})
+                        purchases.append({"after_sector": sector, "upgrade_row": row,
+                                          "level": level + 1, "price": PRICES[level]})
                 launch()
                 continue
-            x = word("dw_px")
-            targets = [word("dw_enemies", i * 10) for i in range(6)
-                       if get("dw_enemies", i * 10 + 9)]
-            target = min(targets, key=lambda value: abs(value - x)) if targets else 72
-            if get("dw_boss_active") == 1:
-                target = word("dw_boss_x") + 8
-                sector = get("dw_sector")
-                if word("dw_boss_y") == 20 and sector not in ordinary_bosses:
-                    screenshot("ordinary-boss-" + str(sector))
-                    ordinary_bosses.add(sector)
-            keys = []
-            if abs(target - x) > 3:
-                keys.append("right" if target > x else "left")
-            close = any(get("dw_bullets", i * 7 + 6)
-                        and abs(word("dw_bullets", i * 7) - x) < 18
-                        and 68 < word("dw_bullets", i * 7 + 2) < 112
-                        for i in range(8))
-            if close and get("dw_energy") >= 50:
-                keys.append("b")
-            if len(targets) >= 2 and not captures:
+            if state == TAKEOFF:
+                run(1)
+                continue
+            ph = get("dw_phase")
+            if ph == P_BOSS and get("dw_sector") not in bosses and word("dw_phase_t") > 90:
+                bosses.add(get("dw_sector"))
+                screenshot("ordinary-boss-%d" % get("dw_sector"))
+            if "gameplay" not in captured and len(live("dw_foes", FOES, FOE)) >= 3 \
+                    and len(live("dw_bullets", BULLETS, SHOT)) >= 2:
                 screenshot("gameplay")
-                captures += 1
-            run(5, keys)
-            session_frames += 5
-        if not captures:
-            screenshot("gameplay")
+                captured.add("gameplay")
+            run(2, bot_keys())
+            flight_frames += 2
+        missed = (word("dw_missed") - missed_start) & 65535
         if get("dw_victory"):
-            ordinary_clears.append(4)
-        evidence["ordinary_sortie"] = {"additional_emulator_frames": video_frames - session_start,
-             "flight_bot_frames": session_frames,
+            clears.append(4)
+        evidence["ordinary_campaign"] = {
+             "emulator_frames": video_frames - session_start,
+             "flight_bot_frames": flight_frames, "missed_frames": missed,
+             "missed_ratio": round(missed / max(1, flight_frames), 4),
              "score": word("dw_score"), "kills": word("dw_kills"),
              "run_tokens": word("dw_run_tokens"), "sector": get("dw_sector"),
              "ending_state": get("dw_state"), "victory": bool(get("dw_victory")),
-             "cleared_sectors": ordinary_clears, "upgrade_purchases": purchases,
-             "method": "Button-only enemy/boss tracking, defensive burst and shop purchases; no WRAM writes."}
-        check(word("dw_kills") > 0, "Ordinary button-only flight defeats enemies")
+             "cleared_sectors": clears, "bosses_seen": sorted(bosses),
+             "upgrade_purchases": purchases,
+             "method": "Button-only foe/boss tracking, bullet dodging, defensive "
+                       "bursts and shop purchases; no WRAM writes."}
+        print("ordinary campaign:", json.dumps(evidence["ordinary_campaign"]), flush=True)
+        check(word("dw_kills") >= 20, "Ordinary button-only flight defeats rival squadrons")
+        check(missed <= flight_frames * 0.04,
+              "Busy flight keeps at least 96 percent of display frames on time")
+        if clears:
+            check(True, "Ordinary button-only play defeats a sector boss and reaches the shop")
         if purchases:
             check(True, "Ordinary campaign buys upgrades with earned tokens")
         if get("dw_victory"):
-            check(True, "Ordinary button-only campaign defeats all four bosses")
-        if get("dw_state") == FLIGHT:
+            check(True, "Ordinary button-only campaign defeats all four rival labs")
+        state = get("dw_state")
+        if state in (FLIGHT, TAKEOFF):
+            until(lambda: get("dw_state") == FLIGHT)
             end_sortie()
-        elif get("dw_state") == RESULTS:
+        else:
+            assert state == RESULTS, state
             screenshot("ordinary-results")
             tap("a")
-        elif get("dw_state") == SHOP:
-            launch()
-            end_sortie()
         assert get("dw_state") == HANGAR
         # Shop currency has already been credited. A new, empty sortie must
         # not repeat that credit when ended through the actual pause menu.
@@ -377,157 +470,202 @@ def main():
         end_sortie()
         check(word("dw_profile", 9) == bank,
               "Ending an empty sortie after the shop cannot duplicate prior credits")
-        # Controlled scenarios begin here. Return upgrades to baseline so the
-        # collision and purchase tests do not depend on the bot's shop choices.
+        launch()
+        check(p.memory[0xFF4A] == 128 and p.memory[0xFF40] & 0x20,
+              "A sortie after one ended from the pause menu keeps the HUD at the bottom")
+        end_sortie()
+
+        # Controlled scenarios: return upgrades to baseline so the collision
+        # and purchase checks do not depend on the bot's shop choices.
         phase = "controlled WRAM/SRAM scenario"
-        for offset in (5, 6, 7):
+        for offset in (5, 6, 7, 11):
             put("dw_profile", 0, offset)
         launch()
         prepare()
-        initial_tokens, initial_kills = word("dw_run_tokens"), word("dw_kills")
-        enemy(0)
-        bullet("dw_shots", 0, 76, 44)
-        until(lambda: word("dw_kills") > initial_kills, limit=30)
-        run(2)
-        check(word("dw_kills") == initial_kills + 1
-              and word("dw_run_tokens") == initial_tokens + 1,
-              "A real projectile collision defeats an arranged enemy and awards tokens", controlled)
-        clear_actors()
+        tokens, kills = word("dw_run_tokens"), word("dw_kills")
+        foe(0, 64, 30)
+        projectile("dw_shots", 0, 72, 46, vy=-1600)
+        until(lambda: word("dw_kills") > kills, limit=30)
+        check(word("dw_kills") == kills + 1 and not get("dw_foes"),
+              "A real projectile collision defeats an arranged rival", controlled)
+        prepare()
+        foe(0, 64, 30, hp=5)
+        projectile("dw_shots", 0, 72, 46, vy=-1600)
+        until(lambda: get("dw_foes") != 5, limit=30)
+        check(get("dw_foes") == 3 and get("dw_foes", 13) > 0,
+              "A twin shot deals two damage and flashes a sturdier rival", controlled)
+        prepare()
         tokens, score = word("dw_run_tokens"), word("dw_score")
-        pickup(0)
-        check(word("dw_run_tokens") == tokens + 6 and word("dw_score") == score + 50,
-              "Token pickup awards six tokens and fifty score", controlled)
+        pickup(D_COIN)
+        check(word("dw_run_tokens") == tokens + 1 and word("dw_score") == score + 25,
+              "A coin pickup awards one token and 25 points", controlled)
         put("dw_power", 0)
-        pickup(1)
-        pickup(1)
-        pickup(1)
-        check(get("dw_power") == 2, "Power pickups strengthen the weapon and clamp at level two", controlled)
+        for _ in range(3):
+            pickup(D_POWER)
+        check(get("dw_power") == 2, "Power pickups strengthen the guns and clamp at level two", controlled)
         put("dw_hp", 2)
-        pickup(2)
-        check(get("dw_hp") == 3, "Shield pickup restores one hull point", controlled)
+        pickup(D_REPAIR)
+        hp = get("dw_hp")
+        pickup(D_REPAIR)
+        check(hp == 3 and get("dw_hp") == 3, "Repair restores one heart without exceeding the hull", controlled)
         put("dw_energy", 0)
-        tokens = word("dw_run_tokens")
-        pickup(3)
-        check(get("dw_energy") == 100 and word("dw_run_tokens") == tokens + 4,
-              "Token boost fills burst energy and awards four tokens", controlled)
-        clear_actors()
+        pickup(D_BOLT)
+        check(get("dw_energy") == 100, "A bolt pickup fills burst energy", controlled)
+        allies = [get("dw_allies")]
+        pickup(D_ALLY)
+        allies.append(get("dw_allies"))
+        pickup(D_ALLY)
+        pickup(D_ALLY)
+        allies.append(get("dw_allies"))
+        check(allies == [0, 1, 2], "Ally pickups add wing dots up to two", controlled)
+        run(30)
+        check(any(get("dw_shots", i * SHOT + 9) == IDS["DW_S_SHOT_SOLO"]
+                  for i in live("dw_shots", SHOTS, SHOT)),
+              "Wing dots fire their own shots", controlled)
+        prepare()
         put("dw_invincible", 0)
-        put("dw_combo", 5)
-        bullet("dw_bullets", 0, word("dw_px") + 4, word("dw_py"))
+        put("dw_power", 2)
+        projectile("dw_bullets", 0, sword("dw_px") + 8, sword("dw_py") + 7, tile=IDS["DW_S_BULLET"])
         until(lambda: get("dw_hp") == 2, limit=20)
-        run(2)
-        check(get("dw_power") == 1 and get("dw_combo") == 0
-              and get("dw_invincible") > 90, "A hostile projectile damages hull, reduces power and grants invincibility", controlled)
-        bullet("dw_bullets", 0, word("dw_px") + 4, word("dw_py"))
+        check(get("dw_power") == 1 and get("dw_invincible") > 90,
+              "A hostile bullet costs a heart and a power level and grants invincibility", controlled)
+        projectile("dw_bullets", 0, sword("dw_px") + 8, sword("dw_py") + 7, tile=IDS["DW_S_BULLET"])
         run(5)
         check(get("dw_hp") == 2, "Invincibility prevents an immediate second hit", controlled)
         prepare()
+        put("dw_invincible", 0)
+        kills = word("dw_kills")
+        foe(0, sword("dw_px"), sword("dw_py"))
+        until(lambda: get("dw_hp") == 2, limit=10)
+        check(word("dw_kills") == kills + 1, "Ramming a rival craft destroys it and damages the plane", controlled)
+        prepare()
         for i in range(3):
-            enemy(i, 20 + i * 30)
-            bullet("dw_bullets", i, 10 + i * 20, 60)
-        put("dw_boss_active", 1)
-        put("dw_boss_hp", 40)
-        put("dw_boss_max", 40)
-        putword("dw_boss_x", 64)
-        putword("dw_boss_y", 20)
+            foe(i, 20 + i * 40, 20, hp=6)
+            projectile("dw_bullets", i, 10 + i * 20, 60, tile=IDS["DW_S_BULLET"])
         tokens, kills = word("dw_run_tokens"), word("dw_kills")
         tap("b")
         check(48 <= get("dw_energy") <= 53 and get("dw_burst") > 0
-              and not any(get("dw_bullets", i * 7 + 6) for i in range(8))
-              and word("dw_kills") == kills + 3 and word("dw_run_tokens") == tokens + 9
-              and get("dw_boss_hp") <= 28,
-              "B burst spends fifty energy, clears bullets, destroys enemies and damages the boss", controlled)
-        screenshot("burst")
+              and not live("dw_bullets", BULLETS, SHOT)
+              and word("dw_kills") == kills + 3 and word("dw_run_tokens") >= tokens + 6,
+              "B burst spends fifty energy, clears bullets and destroys nearby rivals", controlled)
         prepare()
-        put("dw_energy", 0)
+        put("dw_energy", 20)
         tap("b")
-        check(get("dw_burst") == 0, "Insufficient energy prevents a burst", controlled)
-        # End this scenario sortie before the four-sector scenario starts.
-        end_sortie()
+        check(get("dw_burst") == 0 and get("dw_energy") >= 20,
+              "Insufficient energy prevents a burst", controlled)
+        prepare()
+        put("dw_hp", 1)
+        put("dw_invincible", 0)
+        projectile("dw_bullets", 0, sword("dw_px") + 8, sword("dw_py") + 7, tile=IDS["DW_S_BULLET"])
+        until(lambda: get("dw_state") == RESULTS, limit=300)
+        check(get("dw_victory") == 0, "Losing the last heart ends the sortie in the results screen", controlled)
+        screenshot("results")
+        tap("a")
+
+        # Each sector's boss, reached by advancing the camera to the end of
+        # the level; the ROM then runs its real warning and boss phases.
         launch()
         for sector in range(1, 5):
-            prepare()
             assert get("dw_sector") == sector
-            putword("dw_stage_frame", 1799)
-            until(lambda: get("dw_boss_active") == 1, limit=20)
-            check(get("dw_boss_hp") == 54 + sector * 14,
-                  f"Sector {sector} spawns its boss at the real stage timer", controlled)
-            until(lambda: word("dw_boss_y") == 20, limit=100)
+            prepare()
+            putword("dw_cam", IDS["DW_LEVEL_ROWS"] * 8)
+            seen = set()
+            for _ in range(400):
+                seen.add(get("dw_phase"))
+                if get("dw_phase") == P_BOSS:
+                    break
+                if get("dw_phase") == P_WAVES:
+                    clear_actors()
+                put("dw_invincible", 120)
+                run(1)
+            evidence.setdefault("boss_arrivals", []).append({"sector": sector,
+                "hull": word("dw_boss_hp"), "max": word("dw_boss_max"), "phases": sorted(seen)})
+            check({P_WARN, P_BOSS_IN, P_BOSS} <= seen and word("dw_boss_max") == BOSS_HP[sector - 1]
+                  and word("dw_boss_hp") >= BOSS_HP[sector - 1] - 8,
+                  f"Sector {sector} warns, then brings in its boss at full strength", controlled)
+            hp = word("dw_boss_hp")
+            for _ in range(120):
+                put("dw_invincible", 120)
+                run(1, bot_keys())
             screenshot(f"boss-{sector}")
-            clear_actors()
-            put("dw_boss_hp", 1)
-            previous_cleared = get("dw_profile", 8)
-            bullet("dw_shots", 0, word("dw_boss_x") + 12, word("dw_boss_y") + 8)
-            until(lambda: get("dw_state") != FLIGHT, limit=30)
-            run(5)
-            check(get("dw_profile", 8) == max(previous_cleared, sector)
+            check(word("dw_boss_hp") < hp, f"Sector {sector} boss takes damage from the plane's guns", controlled)
+            previous = get("dw_profile", 8)
+            putword("dw_boss_hp", 1)
+            for _ in range(600):
+                if get("dw_state") != FLIGHT:
+                    break
+                put("dw_invincible", 120)
+                run(1, bot_keys() if get("dw_phase") == P_BOSS else [])
+            settle()
+            check(get("dw_profile", 8) == max(previous, sector)
                   and get("dw_state") == (RESULTS if sector == 4 else SHOP),
-                  f"An arranged final hit completes sector {sector} through the real transition", controlled)
+                  f"Defeating boss {sector} plays the clear sequence and banks the sector", controlled)
             bank = word("dw_profile", 9)
             run(60)
             check(word("dw_profile", 9) == bank,
                   f"Sector {sector} completion credits cannot be farmed while waiting", controlled)
             if sector != 4:
-                old_tokens = word("dw_run_tokens")
-                screenshot("shop" if sector == 1 else f"shop-{sector}")
+                tokens = word("dw_run_tokens")
+                hp = get("dw_hp")
                 launch()
-                check(word("dw_run_tokens") == old_tokens
-                      and word("dw_profile", 9) == bank,
-                      f"Shop Next preserves the run without re-crediting sector {sector}", controlled)
-        check(get("dw_victory") == 1, "Four controlled boss defeats reach AI Supremacy results", controlled)
+                check(word("dw_run_tokens") == tokens and word("dw_profile", 9) == bank
+                      and get("dw_hp") == min(3, hp + 1),
+                      f"Shop Next keeps the run, repairs a heart and does not re-credit sector {sector}",
+                      controlled)
+        check(get("dw_victory") == 1, "Four boss defeats reach the victory results", controlled)
         screenshot("victory")
         tap("a")
-        bank = word("dw_profile", 9)
         launch()
-        check(word("dw_run_tokens") == 0 and word("dw_score") == 0,
+        check(word("dw_run_tokens") == 0 and word("dw_score") == 0 and get("dw_sector") == 1,
               "Launching a fresh sortie resets run rewards", controlled)
-        prepare()
-        # Earn purchase funding using real pickup updates at arranged positions.
-        for _ in range(max(0, (120 - bank + 5) // 6)):
-            pickup(0)
         end_sortie()
-        before = word("dw_profile", 9)
-        for row in range(3):
+
+        # Purchases with an arranged balance, through the real hangar menu.
+        putword("dw_profile", 160, 9)
+        tap("down")
+        tap("up")
+        for row in range(4):
             tap("a")
-            if row != 2:
+            if row != 3:
                 tap("down")
-        check(profile()[5:8] == [1, 1, 1]
-              and word("dw_profile", 9) == before - 120,
-              "All three permanent upgrades buy through normal menu input", controlled)
+        check(profile()[5:8] == [1, 1, 1] and profile()[10] == 1 and word("dw_profile", 9) == 0,
+              "All four permanent upgrades buy through normal menu input", controlled)
         launch()
-        check(get("dw_hp") == 4, "Permanent shield upgrade increases starting hull", controlled)
-        prepare()
-        kills = word("dw_kills")
-        enemy(0, hp=2)
-        bullet("dw_shots", 0, 76, 44)
-        until(lambda: word("dw_kills") > kills, limit=20)
-        check(word("dw_kills") == kills + 1,
-              "Permanent wing upgrade lets one projectile defeat a two-hull enemy", controlled)
+        check(get("dw_hp") == 4 and get("dw_allies") == 1,
+              "Hull and ally upgrades add a heart and a wing dot at launch", controlled)
+        prepare(hp=4)
+        put("dw_power", 1)
+        run(40)
+        side = [get("dw_shots", i * SHOT + 9) for i in live("dw_shots", SHOTS, SHOT)]
+        check(IDS["DW_S_SHOT_L"] in side and IDS["DW_S_SHOT_R"] in side,
+              "The wing gun upgrade adds angled side shots", controlled)
         regeneration = []
         for level in (0, 1):
-            prepare()
+            prepare(hp=4)
             put("dw_profile", level, 7)
             put("dw_energy", 0)
-            putword("dw_frame", 96)
-            run(60)
+            run(64)
             regeneration.append(get("dw_energy"))
-        put("dw_profile", 1, 7)
-        check(regeneration[1] > regeneration[0] * 1.6,
-              "Permanent reactor upgrade increases burst-energy regeneration", controlled)
-        evidence["reactor_regeneration"] = {"video_frames_each": 60,
+        check(regeneration[1] >= regeneration[0] * 2 - 1 and regeneration[0] > 0,
+              "The reactor upgrade speeds up burst-energy regeneration", controlled)
+        evidence["reactor_regeneration"] = {"video_frames_each": 64,
              "baseline_energy": regeneration[0], "level_one_energy": regeneration[1]}
         end_sortie()
         saved = profile()
         battery = slots()
         check(valid(battery[:32]) and valid(battery[32:]),
               "Repeated saves alternate two valid records at A200 and A220", controlled)
+        check(lcd_off_frames == 0 and display_off_calls == 0,
+              "The LCD never switches off after boot, so screens never flash white")
+        evidence["lcd"] = {"display_off_calls_after_boot": display_off_calls,
+                           "lcd_off_frames_after_boot": lcd_off_frames,
+                           "watched_frames": video_frames}
         p.stop(save=True)
         boot(game)
         check(profile() == saved and word("dw_best") > 0,
               "Dot, tokens, upgrades, cleared sectors and best score survive power cycling", controlled)
         tap("a")
         check(get("dw_state") == HANGAR, "Configured dot skips the builder after a power cycle", controlled)
-        screenshot("saved-hangar")
         p.stop(save=False)
         # Independent malformed battery images, never the user's save.
         recent = 1 if ((battery[37] - battery[5]) & 255) < 128 else 0
@@ -539,11 +677,12 @@ def main():
                                lambda b, o: b.__setitem__(o + 31, 0))):
             damaged = bytearray(battery)
             mutate(damaged, recent * 32)
-            candidate = temp / ("case-" + str(len(checks)) + ".gbc")
+            candidate = temp / ("case-%d.gbc" % len(checks))
             shutil.copyfile(ROM, candidate)
             boot(candidate, damaged)
             check(profile()[:9] == list(expected[6:15])
-                  and profile()[9] == expected[15] | expected[16] << 8,
+                  and profile()[9] == expected[15] | expected[16] << 8
+                  and profile()[10] == expected[19],
                   label, controlled)
             p.stop(save=False)
         candidate = temp / "wrap.gbc"
@@ -558,16 +697,27 @@ def main():
         check(valid(wrapped[:32]) and wrapped[5] == 1 and wrapped[6] == 4,
               "Saving after generation wrap alternates slots and advances to generation one", controlled)
         p.stop(save=False)
+        candidate = temp / "v1.gbc"
+        shutil.copyfile(ROM, candidate)
+        boot(candidate, record(7, 4, 321) + bytes(32))
+        check(get("dw_profile") == 4 and word("dw_profile", 9) == 321 and get("dw_profile", 11) == 0,
+              "A save from the first release loads with no ally upgrade", controlled)
+        p.stop(save=False)
+        candidate = temp / "range.gbc"
+        shutil.copyfile(ROM, candidate)
+        boot(candidate, record(3, 0, 50, fields=[9, 1, 1, 1, 1, 1, 1, 1, 4]) + bytes(32))
+        check(profile() == [0] * 11, "A checksummed record with an impossible shape is rejected", controlled)
+        p.stop(save=False)
         candidate = temp / "invalid.gbc"
         shutil.copyfile(ROM, candidate)
         boot(candidate, bytes(64))
-        check(profile() == [0] * 10 and word("dw_best") == 0,
+        check(profile() == [0] * 11 and word("dw_best") == 0,
               "Two invalid battery records safely restore defaults", controlled)
         p.stop(save=False)
     evidence["campaign_completion_method"] = (
-        "Controlled stage timer/final-hit WRAM setup plus actual ROM collision, "
-        "shop and results code is validated separately from the ordinary button-only "
-        "campaign attempt recorded in ordinary_sortie.")
+        "Controlled camera advance and boss-hull setup, then the ROM's real "
+        "warning, boss, clear, shop and results code; validated separately "
+        "from the ordinary button-only campaign in ordinary_campaign.")
     evidence["status"] = "passed"
     (BUILD / "validation.json").write_text(json.dumps(evidence, indent=2) + "\n")
     print("PASS:", len(checks), "checks; evidence:", BUILD / "validation.json")

@@ -176,15 +176,17 @@ db_sources = [emit(f'dbi-{name}.c', f'#pragma bank {bank}\n' + (DREAMBASE / 'src
               for name, bank in DB_BANKS.items()]
 db_sources.append(emit('dbi-fixed.c', (DREAMBASE / 'src/fixed.c').read_text()))
 prototypes.append('void dreambase_run(void) BANKED;\nextern uint16_t db_best;')
-# Dotwing has its own 60 Hz flight engine. Most helpers own bank 30;
-# bridge.c copies caller-bank text before crossing into that helper bank.
+# Dotwing has its own 60 Hz flight engine. Its modules share banks exactly
+# as in the standalone cartridge, so every banked call sees the same data;
+# only vbl.c, the sound driver's VBlank hook, lives in the fixed bank.
 DOTWING = ROOT / 'games/dotwing'
-DW_BANKS = {'main': ART_BANK + 5, 'screens': ART_BANK + 6, 'play': ART_BANK + 7, 'art': ART_BANK + 8}
+DW_BANKS = {'main': ART_BANK + 5, 'terraina': ART_BANK + 5, 'screens': ART_BANK + 6,
+            'terrainb': ART_BANK + 6, 'play': ART_BANK + 7, 'art': ART_BANK + 8,
+            'fixed': ART_BANK + 9, 'rivals': ART_BANK + 9, 'world': ART_BANK + 10}
 assert max(DW_BANKS.values()) < ROM_BANKS
 dw_sources = [emit(f'dw-{name}.c', f'#pragma bank {bank}\n' + (DOTWING / 'src' / f'{name}.c').read_text())
               for name, bank in DW_BANKS.items()]
-dw_sources.append(emit('dw-fixed.c', '#pragma bank 30\n' + (DOTWING / 'src/fixed.c').read_text()))
-dw_sources.append(emit('dw-bridge.c', (DOTWING / 'src/bridge.c').read_text()))
+dw_sources.append(emit('dw-vbl.c', (DOTWING / 'src/vbl.c').read_text()))
 prototypes.append('void dotwing_run(void) BANKED;\nextern uint16_t dw_best;')
 prototypes.append('void launcher_art(void) BANKED;\nvoid arcade_metadata(void);')
 emit('modules.h', '\n'.join(prototypes) + '\n')
