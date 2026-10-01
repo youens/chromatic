@@ -14,11 +14,11 @@ CARTRIDGE = ROOT / 'games/arcade/dist/chromatic-arcade.gbc'
 BASE = 'https://chromatic.youens.com'
 def cover_kind(game):
     return 'pixel-art' if game.get('cover') == 'pixel' else 'illustrated'
-OPTIMIZED = {'dot-swarm', 'stormkite', 'comet-links', 'prism-well'}
+OPTIMIZED = {'dot-swarm', 'stormkite', 'comet-links', 'prism-well', 'dreambase-invaders'}
 def artfile(slug, kind='card'):
     if slug in OPTIMIZED:
         return f'{slug}-{kind}.jpg' if kind == 'share' else f'{slug}-{kind}.webp'
-    return slug + ('.png' if slug in ('hello-dot','dot-swarm','stormkite','comet-links','prism-well') else '.jpg')
+    return slug + ('.png' if slug in ('hello-dot','dot-swarm','stormkite','comet-links','prism-well','dreambase-invaders') else '.jpg')
 if OUT.exists():
     shutil.rmtree(OUT)
 OUT.mkdir(parents=True, exist_ok=True)

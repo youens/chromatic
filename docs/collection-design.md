@@ -1,4 +1,4 @@
-# Nine games, nine kinds of play
+# One cartridge, many kinds of play
 
 The September 2026 anthology explores the Game Boy Color programming model
 available to a compatible ModRetro Chromatic. These are first playable arcade
@@ -15,10 +15,13 @@ editions, not changes to the console's FPGA or firmware.
 | Stormkite | Spend the gust now or save it for the boss? | LY=LYC scanline splits for three-band parallax, VBlank-timed weather palettes, a nine-sprite boss | Survive three waves and break the Thunderhead |
 | Comet Links | Aim straight or let a planet bend the shot? | Offline-compiled per-tile force fields, deterministic fixed-point physics, an exact trajectory scope | Sink nine holes (par 31) |
 | Prism Well | Clear now or build toward a chain? | Four-direction match scanning, animated cascades, colourblind-safe glyphs, wave-channel chimes | Clear five wells, four of them floored with stone |
+| Dreambase Invaders | Chase the logo about to escape, or keep the streak? | HBlank-interrupt copper gradient and ripple, window-layer HUD over a scrolling starfield, 8 × 16 sprites, its own banked engine | Absorb eight partner companies |
 
-Stormkite, Comet Links and Prism Well each have a full design document:
-[Stormkite](../games/stormkite/DESIGN.md), [Comet Links](../games/comet-links/DESIGN.md)
-and [Prism Well](../games/prism-well/DESIGN.md). They fill the genres the first
+Stormkite, Comet Links, Prism Well and Dreambase Invaders each have a full
+design document: [Stormkite](../games/stormkite/DESIGN.md),
+[Comet Links](../games/comet-links/DESIGN.md),
+[Prism Well](../games/prism-well/DESIGN.md) and
+[Dreambase Invaders](../games/dreambase-invaders/DESIGN.md). They fill the genres the first
 six left open: a shooter, a sports game and a falling-block puzzle. Each also
 uses hardware the others do not: scanline interrupts and hardware scrolling,
 precompiled physics, and the wave channel.

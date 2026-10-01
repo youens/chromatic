@@ -270,5 +270,32 @@
     "category": "puzzle",
     "cover": "illustrated",
     "art": "art/cover-illustrated-v1.png"
+  },
+  {
+    "slug": "dreambase-invaders",
+    "title": "Dreambase Invaders",
+    "genre": "Inverted arcade shooter",
+    "tagline": "Eat the data.",
+    "description": "Space Invaders, flipped. You are the Dreambase Data Analyst, floating above a lunar base whose turrets fire partner logos straight up at you. Gulp them down, chain streaks for multipliers, and transform as you absorb Supabase, Stripe, PostHog, Vercel, GitHub, ClickHouse, Linear and finally Dreambase itself.",
+    "accent": "#14EC77",
+    "controls": [
+      [
+        "\u2190 \u2191 \u2192 \u2193",
+        "Move"
+      ],
+      [
+        "A / X / Space",
+        "Dash"
+      ],
+      [
+        "B / Z",
+        "Dash"
+      ]
+    ],
+    "goal": "Every catch fills the power meter; fill it to absorb the company and transform. Misses drain your life bar. Streaks of 5, 10 and 15 pay x2, x4 and x8. Clear all eight stacks for the credits. Choose Easy, Normal or Hard on the title screen.",
+    "experiment": "Per-scanline HBlank interrupts that ripple INVADERS and run a copper gradient through every partner colour, LY=LYC splits for a shine across the wordmark, a starfield that scrolls under a fixed window-layer moon base, 8 x 16 sprites, brand art traced from the Dreambase mark, and a wave-channel heartbeat that quickens as the meter fills.",
+    "order": 11,
+    "category": "action",
+    "cover": "pixel"
   }
 ]

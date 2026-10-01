@@ -2,7 +2,7 @@
 
 **https://chromatic.youens.com**
 
-A static, ten-game collection. Each play page uses binjgb to run the same ROM
+A static game collection. Each play page uses binjgb to run the same ROM
 that its download button serves. There are no JavaScript rewrites of the games.
 `/games/chromatic-arcade/` plays the whole anthology cartridge, launcher
 included; its saves last until the page reloads.
@@ -21,7 +21,7 @@ make deploy
 `make site` copies the checked-in release ROMs, artwork, and emulator into the
 ignored `collection/dist` directory, then renders the collection and game pages.
 No frontend dependencies or remote fonts are required. `make games` rebuilds the
-eight shared-runtime cartridges before a release, and
+standalone cartridges before a release, and
 `make -C games/arcade release` rebuilds the anthology. See each game's README for GBDK setup.
 
 Preview uses Portless at **https://chromatic.localhost**. Production uses Workers
@@ -41,8 +41,8 @@ emulation without skipping game time.
 The page supplies server-rendered Open Graph and X large-image metadata. The
 first six covers are illustrative key art; Stormkite, Comet Links and Prism
 Well use pixel posters built from their own tiles. Actual screenshots appear on
-the play pages. `chromatic-arcade-roms.zip` contains all ten standalone
-cartridges, the anthology cartridge and the GBDK runtime license.
+the play pages. `chromatic-arcade-roms.zip` contains every standalone
+cartridge, the anthology cartridge and the GBDK runtime license.
 
 The homepage share image, `web/chromatic-share-v1.jpg`, still reads "Six little
 worlds". Its text is part of the generated illustration, so it needs a new
@@ -52,5 +52,6 @@ binjgb comes from the original Hello Dot vendor directory with its MIT license.
 Cover art generation prompts are documented in each game's `art/README.md`.
 
 Promotional artwork uses the evergreen line "One cartridge, many games".
-Illustrated covers exist for all ten games; native screenshots are separately
-shown on each play page. The collection page plays the exact full cartridge.
+Illustrated covers exist for the first ten games. Dreambase Invaders uses a
+pixel poster from its own sprites until its illustrated key art is added (see
+its `art/README.md`). Native screenshots are separately shown on each play page. The collection page plays the exact full cartridge.

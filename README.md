@@ -1,6 +1,6 @@
 # Chromatic Arcade
 
-**[Play the collection](https://chromatic.youens.com)** · Nine original games for Game Boy Color and ModRetro Chromatic.
+**[Play the collection](https://chromatic.youens.com)** · Original games for Game Boy Color and ModRetro Chromatic. One cartridge, many games.
 
 | Game | What you do |
 | --- | --- |
@@ -13,11 +13,12 @@
 | [Stormkite](games/stormkite/) | Fly a paper kite through a parallax storm and break the Thunderhead. |
 | [Comet Links](games/comet-links/) | Putt a comet across nine holes where every planet bends the shot. |
 | [Prism Well](games/prism-well/) | Line up falling crystals and cascade through ancient stone. |
+| [Dreambase Invaders](games/dreambase-invaders/) | Eat the partner logos a lunar base fires up at you, and transform. |
 
 Each browser player runs the exact same GBC ROM offered for download. The
-collection includes a ZIP of all nine cartridges. The
-[Chromatic Arcade cartridge](games/arcade/) puts all nine behind one launcher,
-with best scores saved to the cartridge. The original
+collection includes a ZIP of every cartridge. The
+[Chromatic Arcade cartridge](games/arcade/) puts every game behind one
+launcher, with best scores saved to the cartridge. The original
 [Hello Dot site](https://hellodot.youens.com) also remains available.
 
 ## Develop
@@ -34,9 +35,9 @@ Cloudflare Workers Static Assets; `make deploy` publishes the checked-in ROMs
 and current site. See [collection/README.md](collection/README.md).
 
 `make test` plays every shared-runtime cartridge in PyBoy (including full
-campaigns of Stormkite, Comet Links and Prism Well) and runs the existing Hello
-Dot checks. `make -C games/arcade release` builds and tests the nine-game
-cartridge. Install the pinned test dependencies using the setup documented in
+campaigns of Stormkite, Comet Links and Prism Well), runs the existing Hello
+Dot checks, and plays all eight levels of Dreambase Invaders.
+`make -C games/arcade release` builds and tests the anthology cartridge. Install the pinned test dependencies using the setup documented in
 [Hello Dot's README](games/hello-dot/README.md).
 
 ## Hardware research

@@ -1,6 +1,6 @@
 # Game projects
 
-All nine games are playable at **https://chromatic.youens.com**.
+Every game is playable at **https://chromatic.youens.com**.
 
 - [Neon Wake](neon-wake/): arcade racing. Outrun the night.
 - [Moonthread](moonthread/): gravity platformer. Gravity is a thread. Pull it.
@@ -11,9 +11,10 @@ All nine games are playable at **https://chromatic.youens.com**.
 - [Stormkite](stormkite/): parallax shooter. Ride the thunder.
 - [Comet Links](comet-links/): gravity mini golf. Every planet pulls.
 - [Prism Well](prism-well/): falling crystal puzzle. Line up the light.
-- [Chromatic Arcade](arcade/): all nine on one cartridge, with a launcher and saved records.
+- [Dreambase Invaders](dreambase-invaders/): inverted arcade shooter. Eat the data.
+- [Chromatic Arcade](arcade/): every game on one cartridge, with a launcher and saved records.
 
 Each game has a standalone GBC ROM, source, art, and instructions. Every game but
-Hello Dot shares the cartridge runtime in `shared/`. Stormkite, Comet Links and
-Prism Well also have a full design document (`DESIGN.md`). Covers are separate
+Hello Dot and Dreambase Invaders shares the cartridge runtime in `shared/`. Stormkite, Comet Links,
+Prism Well and Dreambase Invaders also have a full design document (`DESIGN.md`). Covers are separate
 from actual cartridge screenshots.

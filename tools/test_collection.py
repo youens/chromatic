@@ -6,7 +6,7 @@ from pyboy import PyBoy
 import bots
 ROOT=Path(__file__).resolve().parents[1]
 GAMES=json.loads((ROOT/'tools/games.json').read_text())
-RUNTIME=[g for g in GAMES if g['slug'] not in ('hello-dot','dot-swarm')]
+RUNTIME=[g for g in GAMES if g['slug'] not in ('hello-dot','dot-swarm','dreambase-invaders')]
 class Console:
  def __init__(self,slug):
   self.slug=slug;self.root=ROOT/'games'/slug
