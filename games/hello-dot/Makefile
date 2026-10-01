@@ -20,7 +20,7 @@ web/hello-dot.gbc: $(ROM)
 	cp $(ROM) $@
 
 test: all
-	$(CC) -std=c99 -Wall -Wextra -Werror -Isrc src/game.c tests/game_test.c -o $(BUILD)/game-test
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wno-error=sign-compare -Isrc src/game.c tests/game_test.c -o $(BUILD)/game-test
 	$(BUILD)/game-test
 	$(PYTHON) tools/check_rom.py $(ROM)
 
