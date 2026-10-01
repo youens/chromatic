@@ -1,0 +1,9 @@
+# Dotwing illustrated cover
+
+Generated with the built-in image generation tool. The native contact sheet was the subject reference. This artwork is promotional; the gameplay screenshot remains an emulator capture.
+
+Source: `cover-illustrated-v2.png`. Web exports: `cover-card-v2.webp`, `cover-detail-v2.webp`, and `cover-share-v2.jpg` (1200 by 630). The collection manifest selects v2 explicitly so native asset regeneration cannot replace the illustrated cover.
+
+## Prompt
+
+Use case: ads-marketing. Create polished illustrated key art for DOTWING, a joyful retro arcade aerial shooter. Wide landscape composition, approximately 1.91:1, designed to read beautifully as a small game thumbnail and social sharing card. A large charming mint-green and warm ivory swept-wing jet banks toward the viewer through sweeping navy and turquoise clouds, glossy bubble cockpit clearly showing one smiling round mint Dot pilot with simple black eyes, small flight goggles. Dynamic diagonal flight, twin luminous teal contrails, a few collectible golden token coins. Behind it in the distant sky are four stylized rival boss craft inspired by these emblems: a silver orbital slash, a coral sunburst, a blue four-point star, a purple M. Rivals secondary, small, clean silhouettes. Sophisticated hand-painted 1990s arcade box-art energy with modern crisp editorial illustration, bold shapes, rich cobalt shadows, warm sunlight, restrained texture, exciting but friendly. Clear hierarchy, no clutter. Large beautifully typeset ivory title 'DOTWING' in upper left, exact text. Smaller line below: 'BUILD YOUR DOT. RULE THE SKY.' Keep all type and focal subjects inside generous 10 percent safe margins. No other text, no platform logos, no watermarks, no interface, no pixel grid. Reference images show original game plane, pilot and rival motif identities, use them as subject reference, not as layout or pixel rendering to copy.

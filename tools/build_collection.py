@@ -18,10 +18,13 @@ COLLECTION_IMAGE = '/chromatic-fun-share-v3.jpg'
 COLLECTION_IMAGE_ALT = 'Chromatic Fun by Youens: One cartridge, many games'
 def cover_kind(game):
     return 'pixel-art' if game.get('cover') == 'pixel' else 'illustrated'
+ART_VERSIONS = {g['slug']: g.get('art_version', 'v1') for g in GAMES}
 OPTIMIZED = {'dot-swarm', 'stormkite', 'comet-links', 'prism-well', 'dreambase-invaders', 'dotwing'}
 def artfile(slug, kind='card'):
     if slug in OPTIMIZED:
-        return f'{slug}-{kind}.jpg' if kind == 'share' else f'{slug}-{kind}.webp'
+        version = ART_VERSIONS.get(slug, 'v1')
+        suffix = '' if version == 'v1' else '-' + version
+        return f'{slug}-{kind}{suffix}.jpg' if kind == 'share' else f'{slug}-{kind}{suffix}.webp'
     return slug + ('.png' if slug in ('hello-dot','dot-swarm','stormkite','comet-links','prism-well','dreambase-invaders') else '.jpg')
 if OUT.exists():
     shutil.rmtree(OUT)
@@ -43,7 +46,7 @@ for g in GAMES:
     if slug in OPTIMIZED:
         for kind in ('card', 'detail', 'share'):
             ext = 'jpg' if kind == 'share' else 'webp'
-            shutil.copy2(game / 'art' / f'cover-{kind}-v1.{ext}', OUT / 'art' / artfile(slug, kind))
+            shutil.copy2(game / 'art' / f"cover-{kind}-{ART_VERSIONS[slug]}.{ext}", OUT / 'art' / artfile(slug, kind))
     else:
         shutil.copy2(art, OUT / 'art' / artfile(slug))
     screenshot = game / ('docs/screenshots/gameplay.png' if slug == 'hello-dot' else 'art/gameplay.png')

@@ -327,7 +327,8 @@
     "experiment": "A native 60 Hz C flight engine with a scrolling sky, animated rival emblems, four distinct boss patterns, an on-cartridge Dot builder and checksum-protected battery saves. Token currency, pilot customization and permanent plane upgrades persist between sessions.",
     "order": 12,
     "category": "action",
-    "cover": "pixel",
-    "art": "art/cover.png"
+    "cover": "illustrated",
+    "art": "art/cover-illustrated-v2.png",
+    "art_version": "v2"
   }
 ]
