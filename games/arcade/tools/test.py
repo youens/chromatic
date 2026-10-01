@@ -3,7 +3,7 @@
 Covers the cartridge header, the launcher's intro, shelf, info and records
 screens, the fixed header during a shelf slide, launching and returning from
 every game twice, a real Neon Wake best score, save RAM surviving a power
-cycle, erasing the records, and carrying a version 2 (ten-game) save forward.
+cycle, erasing the records, and carrying both historical save layouts forward.
 """
 from pathlib import Path
 import hashlib
@@ -21,7 +21,7 @@ assert data[0x147] == 0x1B and data[0x148] == 0x04 and data[0x149] == 0x02, 'MBC
 assert data[0x14D] == (-sum(data[0x134:0x14D]) - 25) & 255
 assert int.from_bytes(data[0x14E:0x150], 'big') == (sum(data) - sum(data[0x14E:0x150])) & 65535
 symbols = {k: int(v, 16) for k, v in re.findall(r'DEF (_\w+) 0x([\da-fA-F]+)', (BUILD / 'chromatic-arcade.noi').read_text())}
-GAMES = ['neon-wake', 'moonthread', 'echo-vault', 'bloom-circuit', 'orbit-choir', 'hello-dot', 'stormkite', 'comet-links', 'prism-well', 'dot-swarm', 'dreambase-invaders']
+GAMES = ['neon-wake', 'moonthread', 'echo-vault', 'bloom-circuit', 'orbit-choir', 'hello-dot', 'stormkite', 'comet-links', 'prism-well', 'dot-swarm', 'dreambase-invaders', 'dotwing']
 LAST = len(GAMES) - 1
 HELLO = 5
 p = None
@@ -50,6 +50,17 @@ def press(key):
     run(6, [key])
     run(20)
     settle()
+
+
+def dot_press(key):
+    """Let a complete native menu redraw finish before the next edge."""
+    press(key)
+    before = word('dw_clock')
+    for _ in range(200):
+        run(1)
+        if (word('dw_clock') - before) & 65535 >= 2:
+            return
+    raise AssertionError('Dotwing menu redraw stalled')
 
 
 def settle():
@@ -86,20 +97,23 @@ def signed(name, offset=0):
     return v - 65536 if v >= 32768 else v
 
 
-def v2_save(best, plays, last):
-    """A ten-game record as written by the previous cartridge (version 2)."""
-    body = bytearray(b'CHRA') + bytes([2, last])
+def historical_save(version, best, plays, last):
+    """A real historical record, with independent SRAM beyond the launcher."""
+    body = bytearray(b'CHRA') + bytes([version, last])
     for v in best + plays:
         body += v.to_bytes(2, 'little')
     s = 0x5A17
     for b in body:
         s = (((s << 1) | (s >> 15)) & 0xFFFF) ^ b
     body += s.to_bytes(2, 'little')
-    return bytes(body) + bytes([0xFF]) * (8192 - len(body))
+    ram = body + bytes([0xFF]) * (8192 - len(body))
+    ram[0x200:0x220] = bytes(range(32))
+    return bytes(ram)
 
 
 saved = io.BytesIO()
 results = []
+pilot_choice = None
 boot(bytes([0xFF]) * 8192)
 try:
     run(120)
@@ -127,6 +141,61 @@ try:
             run(10)
             assert get('arcade_in_game') == 1, (slug, 'launch')
             state = 'scene' if i == HELLO else 'phase'
+            if slug == 'dotwing':
+                for _ in range(200):
+                    if word('dw_clock') >= 2:
+                        break
+                    run(1)
+                assert get('dw_state') == 0, ('dotwing title', get('dw_state'))
+                if cycle == 0:
+                    shot('dotwing-title')
+                dot_press('a')
+                if get('dw_state') == 1:
+                    dot_press('right')
+                    dot_press('down')
+                    dot_press('right')
+                    shot('dotwing-builder')
+                    dot_press('start')
+                assert get('dw_state') == 2, ('dotwing hangar', get('dw_state'))
+                choice = bytes(get('dw_profile', n) for n in range(4))
+                if cycle == 0:
+                    pilot_choice = choice
+                else:
+                    assert choice == pilot_choice, 'dotwing saved pilot survived launcher return'
+                dot_press('b')
+                assert get('dw_state') == 1, 'dotwing edit pilot'
+                dot_press('start')
+                assert get('dw_state') == 2, 'dotwing save pilot'
+                dot_press('start')
+                for _ in range(200):
+                    if get('dw_state') == 3:
+                        break
+                    run(1)
+                assert get('dw_state') == 3, ('dotwing flight', get('dw_state'))
+                before = word('dw_frame')
+                x = signed('dw_px')
+                run(20, ['left'])
+                assert signed('dw_px') < x, 'dotwing movement'
+                assert word('dw_frame') - before in (19, 20, 21), 'dotwing 60 Hz'
+                dot_press('start')
+                assert get('dw_state') == 4, 'dotwing pause'
+                x = signed('dw_px')
+                run(60, ['right'])
+                assert signed('dw_px') == x, 'dotwing paused movement'
+                dot_press('start')
+                assert get('dw_state') == 3, 'dotwing resume'
+                if cycle == 0:
+                    run(100)
+                    shot('dotwing-play')
+                run(10, ['start', 'select'])
+                run(40)
+                settle()
+                assert get('arcade_in_game') == 0 and get('launcher_mode') == 1, (slug, 'return')
+                assert plays(i) == cycle + 1, (slug, 'plays', plays(i))
+                press('right')
+                run(20)
+                results.append({'game': slug, 'cycle': cycle + 1, 'builder_hangar_play_pause_return': 'pass'})
+                continue
             if slug == 'dreambase-invaders':
                 # Brand splash, then title, how to play, play, pause and home.
                 assert get('db_mode') == 0, ('dreambase splash', get('db_mode'))
@@ -237,12 +306,18 @@ try:
     press('select')
     assert get('launcher_mode') == 3 and get('saves_ok') == 1, 'records'
     shot('launcher-records')
+    before = p.screen.ndarray.copy()
+    press('right')
+    assert (before != p.screen.ndarray).any(), 'records second page'
+    shot('launcher-records-page-2')
     press('b')
     saved = io.BytesIO()
 finally:
     p.stop(ram_file=saved)
 
 # Power cycle with the saved RAM: records and the last game come back.
+pilot_ram = saved.getvalue()[0x200:0x240]
+erased_ram = io.BytesIO()
 boot(saved.getvalue())
 try:
     run(120)
@@ -258,33 +333,38 @@ try:
     press('b')
     assert get('launcher_mode') == 1
 finally:
-    p.stop(save=False)
+    p.stop(ram_file=erased_ram)
+assert erased_ram.getvalue()[0x200:0x240] == pilot_ram, 'erasing launcher records altered Dotwing pilot SRAM'
 
-# A cartridge saved by the ten-game release keeps its records, and the shelf
-# opens on the game it has never seen.
-old_best = [1200, 340, 0, 0, 0, 9876, 0, 0, 0, 450]
-old_plays = [3, 1, 0, 0, 0, 7, 0, 0, 0, 2]
-boot(v2_save(old_best, old_plays, 5))
-try:
-    run(120)
-    assert get('records', 4) == 3, 'save version'
-    assert [best(i) for i in range(10)] == old_best, 'migrated best scores'
-    assert [plays(i) for i in range(10)] == old_plays, 'migrated plays'
-    assert best(LAST) == 0 and plays(LAST) == 0, 'new game starts fresh'
-    press('start')
-    run(20)
-    assert get('menu_index') == LAST, ('shelf opens on the new game', get('menu_index'))
-    shot('launcher-new-game')
-    press('select')
-    shot('launcher-migrated-records')
-    migrated = {'best': [best(i) for i in range(len(GAMES))], 'last': get('menu_index')}
-finally:
-    p.stop(save=False)
+# Both shipped layouts preserve every score, play count and the unrelated
+# SRAM reserved for Dotwing. The shelf opens on the newest game once.
+migrated = {}
+for version, count in ((2, 10), (3, 11)):
+    old_best = [1200, 340, 0, 0, 0, 9876, 0, 0, 0, 450, 6543][:count]
+    old_plays = [3, 1, 0, 0, 0, 7, 0, 0, 0, 2, 9][:count]
+    boot(historical_save(version, old_best, old_plays, 5))
+    migration_ram = io.BytesIO()
+    try:
+        run(120)
+        assert get('records', 4) == 4, 'save version'
+        assert [best(i) for i in range(count)] == old_best, 'migrated best scores'
+        assert [plays(i) for i in range(count)] == old_plays, 'migrated plays'
+        assert best(LAST) == 0 and plays(LAST) == 0, 'new game starts fresh'
+        press('start')
+        run(20)
+        assert get('menu_index') == LAST, ('shelf opens on the new game', get('menu_index'))
+        shot(f'launcher-v{version}-new-game')
+        press('select')
+        shot(f'launcher-v{version}-migrated-records')
+        migrated[str(version)] = {'best': [best(i) for i in range(len(GAMES))], 'last': get('menu_index')}
+    finally:
+        p.stop(ram_file=migration_ram)
+    assert migration_ram.getvalue()[0x200:0x220] == bytes(range(32)), 'migration altered Dotwing SRAM'
 (BUILD / 'validation.json').write_text(json.dumps({
     'sha256': hashlib.sha256(data).hexdigest(),
     'neon_wake_saved_best': earned,
-    'version_2_save_migrated': migrated,
+    'historical_saves_migrated': migrated,
     'tests': results,
 }, indent=2) + '\n')
 print(f'PASS: launcher, {len(GAMES)} games launched twice, saved best {earned} survived a power cycle, '
-      'erase, version 2 save migration, header and checksums')
+      'erase, version 2 and 3 save migration, header and checksums')

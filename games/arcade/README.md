@@ -2,7 +2,7 @@
 
 One Game Boy Color ROM containing Neon Wake, Moonthread, Echo Vault, Bloom
 Circuit, Orbit Choir, Hello Dot, Stormkite, Comet Links, Prism Well, Dot Swarm
-and Dreambase Invaders, behind a launcher of its own. Press Start + Select together in any game to return to the
+Dreambase Invaders and Dotwing, behind a launcher of its own. Press Start + Select together in any game to return to the
 launcher. Best scores and play counts are saved on the cartridge.
 
 ![The launcher shelf](art/launcher-shelf.png)
@@ -14,7 +14,7 @@ launcher. Best scores and play counts are saved on the cartridge.
 | Title card | The Chromatic Arcade logo fades in with a three-note chime. Start or A opens the shelf. |
 | Shelf | A 48 × 48 cartridge label for every game on a sliding shelf. ← → (or ↑ ↓) slides it, with the neighbours peeking in from the edges. Below it are the game's name, genre and tagline, page dots, and its saved best score and play count. Unplayed games carry a NEW badge. |
 | Game card (B) | A larger label, a two-line pitch, the game's own controls and goal, and its records. A plays, B returns. |
-| Hall of Light (Select) | Every game's best score, total plays, and whether the cartridge accepted the save. Hold A + B for two seconds to erase. Long names have a short form here (DREAMBASE INV). |
+| Hall of Light (Select) | Every game's best score, total plays, and whether the cartridge accepted the save. Left/right changes the records page. Hold A + B for two seconds to erase launcher records. Long names have a short form here (DREAMBASE INV). |
 
 The shelf's icon band scrolls on its own scanline split: an LY=LYC interrupt
 changes SCX at line 15 and resets it at line 79. The header and the details
@@ -27,7 +27,8 @@ writes or a map transfer, never both, so neither overruns the blanking period.
 
 Each game has its own icon, drawn procedurally in
 [tools/launcher_art.py](tools/launcher_art.py) with four colours. Dreambase
-Invaders' label doubles the game's own Data Analyst sprite. The 233 unique
+Invaders' label doubles the game's own Data Analyst sprite; Dotwing's label
+shows a smiling Dot at the controls of a mint jet. The unique
 icon tiles, deduplicated with flips, live in VRAM bank 1 so they never collide
 with a game's tiles. The same script builds the logo, the interface glyphs and
 the launcher's text tables. It takes each game's control text straight from
@@ -36,23 +37,25 @@ its source.
 ## Saved records
 
 The cartridge header declares MBC5 with 8 KiB of battery-backed RAM (type
-`0x1B`). The launcher keeps a 52-byte record at `0xA000`: a magic word, a
+`0x1B`). The launcher keeps a 56-byte record at `0xA000`: a magic word, a
 version, the last game played, and a best score and play count for each game,
 protected by a checksum. It reads the record at boot and writes it before and
 after each game. If the check fails, or the cartridge has no RAM, it starts
 fresh and the Hall of Light reports `NO SAVE MEMORY`. RAM is enabled only
 while the record is being copied.
 
-Save format version 3 adds Dreambase Invaders as the eleventh entry. A
-cartridge saved by the ten-game release (version 2) keeps every best score,
-play count and checksum-verified record: the launcher copies them into the
-new layout, starts Dreambase Invaders with no plays, and opens the shelf on
-it once. Anything else that fails the check starts fresh, as before.
+Save format version 4 adds Dotwing as the twelfth entry. Cartridges saved by
+the ten-game release (version 2) or eleven-game release (version 3) keep every
+checksum-verified best score and play count. The launcher copies them into
+the new layout, starts new entries with no plays, and opens the shelf on
+Dotwing once. Anything else that fails the check starts fresh, as before.
+Dotwing keeps its pilot, token wallet and permanent upgrades separately at
+`0xA200`, so migrations and erasing launcher records preserve those choices.
 
 The shared-runtime games still keep their own best score in memory. The
 launcher hands each game its saved best before starting it and stores any
 higher score when it returns. Hello Dot works the same way through
-`best_score`, and Dreambase Invaders through `db_best`.
+`best_score`, Dreambase Invaders through `db_best`, and Dotwing through `dw_best`.
 
 ## Build and test
 
@@ -66,15 +69,18 @@ The standalone games remain separate releases. Generated translation units
 are in `build/`; edit `tools/build.py`, `tools/launcher_art.py`, `src/menu.c` or
 the original game sources instead.
 
-The 512 KiB cartridge uses 26 of its 32 banks:
+The 512 KiB cartridge uses all 32 banks:
 
 | Bank | Contents |
 | --- | --- |
-| 0 | Launcher, shared runtime, game dispatch, Stormkite's scanline interrupt handlers, Dreambase Invaders' interrupt handlers and transfer helpers (`fixed.c`) |
+| 0 | Launcher, shared runtime, game dispatch, Stormkite's scanline interrupt handlers, and the native games' fixed helpers (`fixed.c`) |
 | 1–18 | Code, then graphics, for each of the nine shared-runtime games |
 | 19–20 | Hello Dot, which keeps its own engine |
 | 21 | Launcher tiles and icons |
 | 22–25 | Dreambase Invaders, which keeps its own engine: frame loop and sound, screens, gameplay, graphics |
+| 26–29 | Dotwing, which keeps its own engine: frame loop and sound, screens, gameplay, graphics |
+| 30 | Dotwing helpers and battery-save transfers; a small text bridge remains in bank 0 |
+| 31 | Launcher record checksums, battery transfers and historical save migrations |
 
 `tools/build.py` finds every symbol a game defines by reading SDCC's own
 assembly output, then gives it a `g<N>_` prefix. Games therefore link
@@ -82,8 +88,10 @@ together without hand-kept symbol lists. Dreambase Invaders is compiled with
 `ARCADE` defined, which turns its `main` into `dreambase_run` and adds the
 Start + Select check; its globals already carry `db_`, `pl_`, `pr_` and `pk_`
 prefixes. It keeps its large buffers in the `0xD000` area, which no other game
-uses while it runs. The build fails if the combined work RAM would reach the
-screen buffers pinned at `0xD000`; about 670 bytes are free. Returning to the launcher undoes any hardware a game claimed: its
+uses while it runs. Dotwing is also compiled with `ARCADE`, using
+`dotwing_run` and the same Start + Select return. Its large buffers reuse the
+reserved `0xD000` region while it runs. The build fails if combined ordinary
+work RAM reaches that region. Returning to the launcher undoes any hardware a game claimed: its
 interrupt handlers, scroll registers, sprite size and sound.
 
 The emulator test checks the header and checksums, and the intro, shelf,
@@ -95,7 +103,9 @@ Invaders it checks the brand splash, title, instructions, movement at 60 Hz,
 pause, and the return. It drives a full Neon Wake round to earn a real score,
 power-cycles the emulator with the saved RAM, and confirms the score, play
 counts and last game come back. It erases the records, then boots a
-version 2 save and confirms every record carries over. Screenshots and machine-readable results are
+version 2 and version 3 saves and confirms every record carries over. Dotwing
+also checks its builder, flight, pause, return and independent SRAM region.
+Screenshots and machine-readable results are
 written under `build/`. The anthology ROM also runs in the site's binjgb
 player, but neither check establishes physical cartridge play.
 
@@ -138,8 +148,6 @@ battery-backed save persistence have not yet been observed on this device.
 
 ## Pending installation
 
-The current `dist/chromatic-arcade.gbc` adds Dreambase Invaders as the
-eleventh game. SHA-256:
-94f807c5694e15441c1397a8594dbdc88b2f7af2e9f832bdad951bfd092ee9db.
-Size: 524288 bytes. It passes the emulator test above, including the
-version 2 save migration, but it has not yet been written to Player 1.
+The current build adds Dreambase Invaders and Dotwing to the last installed
+ten-game release. Its verified SHA-256 is written to `dist/SHA256SUMS` by
+`make release`. Size: 524288 bytes. This update has not been written to Player 1.

@@ -297,5 +297,37 @@
     "order": 11,
     "category": "action",
     "cover": "pixel"
+  },
+  {
+    "slug": "dotwing",
+    "title": "Dotwing",
+    "genre": "AI sky shooter",
+    "tagline": "Build your Dot. Rule the sky.",
+    "description": "Build a smiling OpenAI Dot, suit up in your own plane, and fly through a bright arcade battle for AI supremacy. Grok, Claude, Gemini and Muse turn their emblems into rival fleets and four giant bosses. Collect tokens, trigger a token burst, and upgrade your plane between flights.",
+    "accent": "#43efc1",
+    "controls": [
+      [
+        "D-pad / Arrows",
+        "Fly"
+      ],
+      [
+        "A / X / Space",
+        "Hold for precision flying"
+      ],
+      [
+        "B / Z",
+        "Token burst"
+      ],
+      [
+        "Start / Enter",
+        "Pause; launch from the hangar"
+      ]
+    ],
+    "goal": "Defeat all four rival lab bosses. Your plane fires automatically. Collect token coins and power boosts, then spend banked tokens on permanent weapon, reactor and shield upgrades. The Dot builder saves your shape, color, face and accessory together with your upgrades and best score.",
+    "experiment": "A native 60 Hz C flight engine with a scrolling sky, animated rival emblems, four distinct boss patterns, an on-cartridge Dot builder and checksum-protected battery saves. Token currency, pilot customization and permanent plane upgrades persist between sessions.",
+    "order": 12,
+    "category": "action",
+    "cover": "pixel",
+    "art": "art/cover.png"
   }
 ]

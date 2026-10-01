@@ -21,7 +21,7 @@ FONT = ast.literal_eval(re.search(r'FONT = (\{.*?\n\})', (ROOT / 'games/shared/a
 INK = (2, 2, 6)
 
 # Launcher order. kind is a runtime-game index for the dispatch table, or
-# 'hello' for Hello Dot, which keeps its own engine.
+# a named native engine for the independent games.
 GAMES = [
     {'slug': 'neon-wake', 'kind': 0, 'name': 'NEON WAKE', 'genre': 'ARCADE RACING',
      'tagline': 'OUTRUN THE NIGHT', 'blurb': ['THREAD THE TRAFFIC', 'ON A BENDING ROAD'],
@@ -60,6 +60,10 @@ GAMES = [
      'blurb': ['EAT EVERY LOGO THE', 'MOON BASE FIRES UP'],
      'controls': ['D PAD MOVE', 'A OR B DASH', 'CLEAR ALL 8 STACKS'],
      'palette': [INK, (2, 6, 7), (2, 29, 14), (31, 31, 31)]},
+    {'slug': 'dotwing', 'kind': 'dotwing', 'name': 'DOTWING', 'genre': 'AI SKY SHOOTER',
+     'tagline': 'BUILD YOUR DOT FLY', 'blurb': ['A DOT A PLANE AND', 'FOUR RIVAL LABS'],
+     'controls': ['D PAD FLY A FOCUS', 'B TOKEN BURST', 'UPGRADE YOUR PLANE'],
+     'palette': [INK, (3, 8, 15), (5, 29, 24), (31, 25, 9)]},
 ]
 
 
@@ -356,9 +360,34 @@ def icon_dreambase_invaders():
     return p
 
 
+def icon_dotwing():
+    """A mint jet with a smiling dot pilot over a cloud-striped sky."""
+    p = card()
+    for y in (9, 21, 36):
+        for x in range(3, 45):
+            if inside(p, x, y):
+                p[y][x] = 1
+    # Wings and twin engine trails surround the dot's cockpit.
+    for y in range(14, 39):
+        width = 2 if y < 22 else min(16, (y - 20) * 2) if y < 30 else 5
+        for x in range(24 - width, 25 + width):
+            if inside(p, x, y):
+                p[y][x] = 2
+    rect(p, 17, 37, 19, 43, 3)
+    rect(p, 29, 37, 31, 43, 3)
+    disc(p, 24, 22, 7, 3)
+    put(p, 21, 20, 0)
+    put(p, 27, 20, 0)
+    for x, y in ((22, 24), (23, 25), (24, 25), (25, 25), (26, 24)):
+        put(p, x, y, 0)
+    for x, y in ((9, 8), (39, 13), (7, 31)):
+        disc(p, x, y, 2, 3)
+    return p
+
+
 ICONS = [icon_neon_wake, icon_moonthread, icon_echo_vault, icon_bloom_circuit, icon_orbit_choir,
          icon_hello_dot, icon_stormkite, icon_comet_links, icon_prism_well, icon_dot_swarm,
-         icon_dreambase_invaders]
+         icon_dreambase_invaders, icon_dotwing]
 
 UI = {
     'dot': ['00000000', '00000000', '00000000', '00011000', '00011000', '00000000', '00000000', '00000000'],
@@ -525,7 +554,8 @@ void launcher_art(void) BANKED {{
     data += c_bytes('uint8_t', 'icon_attrs', icon_attrs)
     data += c_bytes('uint16_t', 'icon_palettes', [rgb(c) for g in GAMES for c in g['palette']])
     data += c_bytes('uint16_t', 'accents', [rgb(accent(g)) for g in GAMES])
-    kinds = [255 if g['kind'] == 'hello' else 254 if g['kind'] == 'dreambase' else g['kind'] for g in GAMES]
+    native_kinds = {'hello': 255, 'dreambase': 254, 'dotwing': 253}
+    kinds = [native_kinds.get(g['kind'], g['kind']) for g in GAMES]
     data += c_bytes('uint8_t', 'game_kind', kinds)
     # fade_table[level * 32 + c] = c * level / 8, for palette fades.
     data += c_bytes('uint8_t', 'fade_table', [c * level >> 3 for level in range(9) for c in range(32)])
