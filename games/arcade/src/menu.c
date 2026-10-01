@@ -1,6 +1,8 @@
 /* Chromatic Arcade launcher: a sliding shelf of cartridges, info cards,
    and battery-backed records. The icon band scrolls on its own scanline split
-   while the header and the game details stay still. */
+   while the header and the game details stay still. tools/build.py compiles
+   this file into a switchable bank; shelf.c keeps the scanline interrupt
+   handlers and the entry point in the fixed bank. */
 #include "runtime.h"
 #include "digits.h"
 #include "launcher-data.h"
@@ -32,7 +34,7 @@ Records records;
 uint8_t arcade_selected, arcade_in_game, menu_index, launcher_mode, saves_ok;
 uint8_t center_slot, ring_game[4], slide_dir, slide_frame, fade_level;
 uint8_t band_scx, band_on, erase_hold, frame_count;
-static uint8_t band_split, installed, map_dirty, previous, held_for, records_page;
+static uint8_t installed, map_dirty, previous, held_for, records_page;
 static uint16_t pal_mask;
 static uint16_t palettes[64], faded[64];
 static const uint8_t slide_steps[8] = {14, 12, 10, 8, 7, 6, 4, 3};
@@ -183,7 +185,6 @@ static void draw_icon(uint8_t x, uint8_t y, uint8_t game, uint8_t pal) {
       tile(x + c, y + r, *t++, *a++ | pal);
 }
 static void header(void) {
-  uint8_t x;
   tile(1, 0, UI_BRAND, 7);
   tile(2, 0, UI_BRAND + 1, 7);
   tile(1, 1, UI_BRAND + 2, 7);
@@ -220,19 +221,9 @@ static void sound_chord(uint16_t f) {
 }
 
 /* ------------------------------------------------------------- the shelf */
-static void shelf_line(void) {
-  uint8_t x = band_split ? 0 : band_scx;
-  while (STAT_REG & 3)
-    ;
-  SCX_REG = x;
-  LYC_REG = band_split ? 255 : 79;
-  band_split = 1;
-}
-static void shelf_frame(void) {
-  SCX_REG = 0;
-  band_split = 0;
-  LYC_REG = band_on ? 15 : 255;
-}
+/* Interrupt handlers, in the fixed bank (shelf.c). */
+void shelf_line(void);
+void shelf_frame(void);
 static void install(void) {
   if (installed)
     return;
@@ -539,7 +530,7 @@ static void launch(void) {
     frame();
   previous = 0;
 }
-void main(void) {
+void launcher_main(void) BANKED {
   uint8_t keys, pressed;
   cpu_fast();
   load_records();

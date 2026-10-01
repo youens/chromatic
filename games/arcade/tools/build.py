@@ -2,12 +2,16 @@
 
 Each shared-runtime game is compiled from its own unmodified source. Its
 file-scope symbols are discovered from the compiler's own output and given a
-g<N>_ prefix so eight games can link into one ROM. Code and graphics for each
-game get their own 16 KiB banks; the runtime, dispatch, Stormkite's scanline
-interrupt handlers and the launcher live in the fixed bank.
+g<N>_ prefix so the games can link into one ROM. Their code and graphics
+modules are packed into as few 16 KiB banks as fit; the runtime, dispatch,
+Stormkite's scanline interrupt handlers and the launcher's own interrupt
+handlers live in the fixed bank, and the rest of the launcher in bank 31.
+Large per-game arrays are moved out of low work RAM, which every game keeps
+for good, into a slot of upper work RAM that only the running game uses.
 """
 from pathlib import Path
 import hashlib
+import json
 import re
 import subprocess
 import sys
@@ -31,7 +35,11 @@ CLEANUP = {'stormkite': 'sky_stop();'}
 HELLO_BANK = 1 + 2 * len(GAMES)
 ART_BANK = HELLO_BANK + 2
 ROM_BANKS = 32
+LAUNCHER_BANK = ROM_BANKS - 1
 assert ART_BANK < ROM_BANKS
+# Runtime games' modules are packed by GBDK's bankpack into banks below the
+# native games; whatever they leave free is room for future games.
+PACKED_BANKS = (1, HELLO_BANK - 1)
 assert f'#pragma bank {ART_BANK}' in (Path(launcher_art.__file__).read_text())
 
 
@@ -54,13 +62,63 @@ def compile_c(source, *includes, asm=False):
 
 
 def defined_symbols(slug, source_text):
-    """Global names a translation unit defines, read from SDCC's assembly."""
+    """Global names a translation unit defines, and the sizes of its
+    uninitialized variables, read from SDCC's assembly."""
     # Compiled from its own directory so "runtime.h" resolves to the original.
     (OUT / 'probe').mkdir(exist_ok=True)
     probe = emit(f'probe/{slug}.c', source_text)
     asm = compile_c(probe, SHARED, ROOT / 'games' / slug / 'build', OUT, asm=True).read_text()
     exported = set(re.findall(r'^\s*\.globl\s+_(\w+)', asm, re.M))
-    return exported & set(re.findall(r'^_(\w+)::?', asm, re.M))
+    sizes = {name: int(size) for name, size in re.findall(r'^_(\w+)::\s*\n\s*\.ds\s+(\d+)', asm, re.M)}
+    return exported & set(re.findall(r'^_(\w+)::?', asm, re.M)), sizes
+
+
+# Shared-runtime games keep their screen buffers at D000-D7FF and the stack
+# keeps DC00-DFFF, so D800-DBFF is free while a runtime game runs. Each
+# array listed here moves into that slot. All of them are rebuilt by the
+# game's game_reset, or written before they are read, so nothing depends on
+# a previous launch; Dreambase Invaders (D000-D7DF) and Dotwing (D000-DBFF)
+# reuse the same memory only while they run.
+OVERLAY_BASE, OVERLAY_END = 0xD800, 0xDC00
+OVERLAYS = {
+    'echo-vault': ['maze', 'seen', 'stack', 'distmap'],
+    'bloom-circuit': ['board', 'solution', 'powered', 'visit', 'path', 'undo_cell', 'undo_value'],
+    'prism-well': ['board', 'marks'],
+    'dot-swarm': ['snakes', 'fx', 'fy'],
+}
+
+
+def split_declarators(text):
+    parts, depth, current = [], 0, ''
+    for ch in text:
+        depth += ch == '['
+        depth -= ch == ']'
+        if ch == ',' and not depth:
+            parts.append(current.strip())
+            current = ''
+        else:
+            current += ch
+    return parts + [current.strip()]
+
+
+def overlay(source, prefix, names, sizes):
+    """Give each named file-scope array its own declaration at a fixed
+    address in the overlay slot."""
+    address, placed = OVERLAY_BASE, {}
+    for name in names:
+        full = prefix + name
+        assert name in sizes, (name, 'must be an uninitialized variable')
+        statement = re.search(r'^([A-Za-z_]\w*)[ \t]+([^;{}()=]*\b' + full + r'\s*\[[^;{}()=]*);', source, re.M)
+        assert statement, full
+        kind, declarators = statement.group(1), split_declarators(statement.group(2))
+        target = next(d for d in declarators if re.match(full + r'\s*\[', d))
+        rest = [d for d in declarators if d is not target]
+        text = (f'{kind} {", ".join(rest)};\n' if rest else '') + f'{kind} __at({address:#06x}) {target};'
+        source = source[:statement.start()] + text + source[statement.end():]
+        placed[full] = [address, sizes[name]]
+        address += sizes[name]
+    assert address <= OVERLAY_END, (prefix, f'overlay ends at {address:#x}')
+    return source, placed
 
 
 header = (SHARED / 'runtime.h').read_text()
@@ -75,6 +133,7 @@ metadata = ['game_title', 'game_tagline', 'game_controls1', 'game_controls2', 'g
 objects = []
 prototypes = []
 unbanked = []
+overlays = {}
 for i, (slug, extras) in enumerate(GAMES):
     prefix = f'g{i}_'
     game = ROOT / 'games' / slug
@@ -86,10 +145,12 @@ for i, (slug, extras) in enumerate(GAMES):
             source = replace(source, f'#include "{include}"', local.read_text().replace('#include <stdint.h>\n', ''))
     for extra in extras:
         emit(Path(extra).name.replace('.c', '.h'), (game / extra).with_suffix('.h').read_text())
-    names = defined_symbols(slug, source)
+    names, sizes = defined_symbols(slug, source)
     assert {'game_reset', 'game_update', 'game_draw', *metadata} <= names, (slug, names)
     for name in sorted(names, key=len, reverse=True):
         source = re.sub(r'\b' + name + r'\b', prefix + name, source)
+    if slug in OVERLAYS:
+        source, overlays[slug] = overlay(source, prefix, OVERLAYS[slug], sizes)
     for fn in ['game_reset', 'game_update', 'game_draw']:
         source = replace(source, f'void {prefix}{fn}(void)', f'void {prefix}{fn}(void) BANKED')
         prototypes.append(f'void {prefix}{fn}(void) BANKED;')
@@ -99,7 +160,7 @@ for i, (slug, extras) in enumerate(GAMES):
         start = source.index('  memcpy(tiles + 224, r, 320);')
         end = source.index('  for (i = 0; i < 6; i++) {', start)
         source = source[:start] + '  g0_road();\n' + source[end:]
-    source = f'#pragma bank {i * 2 + 1}\n' + source
+    source = '#pragma bank 255\n' + source
     source += f'\nvoid {prefix}metadata(void) BANKED {{\n'
     source += '  memcpy(game_palette, ' + prefix + 'game_palette, sizeof(game_palette));\n'
     for name in metadata[:-1]:
@@ -110,7 +171,7 @@ for i, (slug, extras) in enumerate(GAMES):
     prototypes.append(f'void {prefix}metadata(void) BANKED;')
     assets = (game / 'build/assets.h').read_text()
     assets = re.sub(r'^const uint8_t', 'static const uint8_t', assets, flags=re.M)
-    assets = f'#pragma bank {i * 2 + 2}\n#include "runtime.h"\n#include <string.h>\n' + assets
+    assets = '#pragma bank 255\n#include "runtime.h"\n#include <string.h>\n' + assets
     assets += f'\nvoid {prefix}assets(void) BANKED {{\nset_bkg_data(0,192,bg_data);\nset_bkg_data(192,TITLE_COUNT,title_data);\nset_sprite_data(0,SPRITE_COUNT,sprite_data);\n}}\n'
     assets += f'void {prefix}backdrop(void) BANKED {{ memcpy(tiles,scene_map,1024); memcpy(colors,scene_colors,1024); }}\n'
     assets += f'void {prefix}title(void) BANKED {{ uint8_t x,y; for(y=0;y<6;y++) for(x=0;x<20;x++) {{ tile(x,y+3,title_map[y*20+x],arcade_selected==8 && y>=3 ? 2 : 1); }} }}\n'
@@ -176,15 +237,17 @@ db_sources = [emit(f'dbi-{name}.c', f'#pragma bank {bank}\n' + (DREAMBASE / 'src
               for name, bank in DB_BANKS.items()]
 db_sources.append(emit('dbi-fixed.c', (DREAMBASE / 'src/fixed.c').read_text()))
 prototypes.append('void dreambase_run(void) BANKED;\nextern uint16_t db_best;')
-# Dotwing has its own 60 Hz flight engine. Most helpers own bank 30;
-# bridge.c copies caller-bank text before crossing into that helper bank.
+# Dotwing has its own 60 Hz flight engine. Its modules share banks exactly
+# as in the standalone cartridge, so every banked call sees the same data;
+# only vbl.c, the sound driver's VBlank hook, lives in the fixed bank.
 DOTWING = ROOT / 'games/dotwing'
-DW_BANKS = {'main': ART_BANK + 5, 'screens': ART_BANK + 6, 'play': ART_BANK + 7, 'art': ART_BANK + 8}
+DW_BANKS = {'main': ART_BANK + 5, 'terraina': ART_BANK + 5, 'screens': ART_BANK + 6,
+            'terrainb': ART_BANK + 6, 'play': ART_BANK + 7, 'art': ART_BANK + 8,
+            'fixed': ART_BANK + 9, 'rivals': ART_BANK + 9, 'world': ART_BANK + 10}
 assert max(DW_BANKS.values()) < ROM_BANKS
 dw_sources = [emit(f'dw-{name}.c', f'#pragma bank {bank}\n' + (DOTWING / 'src' / f'{name}.c').read_text())
               for name, bank in DW_BANKS.items()]
-dw_sources.append(emit('dw-fixed.c', '#pragma bank 30\n' + (DOTWING / 'src/fixed.c').read_text()))
-dw_sources.append(emit('dw-bridge.c', (DOTWING / 'src/bridge.c').read_text()))
+dw_sources.append(emit('dw-vbl.c', (DOTWING / 'src/vbl.c').read_text()))
 prototypes.append('void dotwing_run(void) BANKED;\nextern uint16_t dw_best;')
 prototypes.append('void launcher_art(void) BANKED;\nvoid arcade_metadata(void);')
 emit('modules.h', '\n'.join(prototypes) + '\n')
@@ -214,35 +277,50 @@ for game, native_sources in ((DREAMBASE, db_sources), (DOTWING, dw_sources)):
         subprocess.run([str(LCC), '-DARCADE', '-Wf--opt-code-size', '-I' + str(game / 'src'),
                         '-I' + str(game / 'build'), '-c', '-o', str(target), str(path)], check=True)
         objects.append(target)
-# Launcher save transfers need no caller-bank pointers. Give the historical
-# migration code the final ROM bank so bank 0 keeps room for interrupts.
-menu_source = (ROOT / 'games/arcade/src/menu.c').read_text()
-records_begin = menu_source.index('/* ------------------------------------------------------------- records */')
-records_end = menu_source.index('/* ------------------------------------------------------ screen helpers */')
-record_code = menu_source[records_begin:records_end]
-record_type = menu_source[menu_source.index('typedef struct {'):menu_source.index('} Records;') + len('} Records;')]
-record_defines = '\n'.join(re.findall(r'^#define (?:SAVE_VERSION|V2_GAMES|V3_GAMES) .*$', menu_source, re.M))
-record_magic = re.search(r'^static const char magic\[4\].*$', menu_source, re.M).group(0)
-record_functions = ('save_records', 'reset_records', 'load_records')
-record_declarations = '\n'.join(f'void {fn}(void) BANKED;' for fn in record_functions)
-for fn in record_functions:
-    record_code = replace(record_code, f'static void {fn}(void)', f'void {fn}(void) BANKED')
-record_source = f'#pragma bank 31\n#include "runtime.h"\n#include <string.h>\n#define GAME_COUNT {len(launcher_art.GAMES)}\n'
-record_source += record_defines + '\n' + record_type + '\nextern Records records;\nextern uint8_t saves_ok;\n'
-record_source += record_magic + '\n' + record_code
-record_path = emit('menu-records.c', record_source)
-objects.append(compile_c(record_path, OUT, SHARED))
-menu_source = menu_source[:records_begin] + record_declarations + '\n\n' + menu_source[records_end:]
-menu_source = replace(menu_source, record_magic, '')
-menu_path = emit('menu.c', menu_source)
-menu = OUT / 'menu.o'
-subprocess.run([str(LCC), '-Wf--opt-code-size', '-I' + str(OUT), '-I' + str(SHARED), '-c', '-o', str(menu), str(menu_path)], check=True)
+# The launcher's drawing, menus and save records run from a switchable bank;
+# its data is compiled into the same bank, and every call it makes passes
+# only pointers into that bank or work RAM. shelf.c keeps the interrupt
+# handlers and the entry point in the fixed bank.
+menu = compile_c(emit('menu.c', f'#pragma bank {LAUNCHER_BANK}\n' + (ROOT / 'games/arcade/src/menu.c').read_text()), OUT, SHARED)
+shelf = compile_c(ROOT / 'games/arcade/src/shelf.c', OUT, SHARED)
 rom = OUT / 'chromatic-arcade.gbc'
 # MBC5 with battery-backed RAM (0x1B): 32 banks of ROM and one 8 KiB RAM bank.
-subprocess.run([str(LCC), '-Wm-yC', '-Wm-yt0x1B', f'-Wm-yo{ROM_BANKS}', '-Wm-ya1', '-Wm-ynCHROMATIC ARCADE',
-                '-Wl-m', '-Wl-j', '-o', str(rom), str(menu), *[str(x) for x in objects]], check=True)
-# All game RAM must end below the screen buffers the runtime pins at 0xD000.
+subprocess.run([str(LCC), '-autobank', f'-Wb-min={PACKED_BANKS[0]}', f'-Wb-max={PACKED_BANKS[1]}',
+                '-Wm-yC', '-Wm-yt0x1B', f'-Wm-yo{ROM_BANKS}', '-Wm-ya1', '-Wm-ynCHROMATIC ARCADE',
+                '-Wl-m', '-Wl-j', '-o', str(rom), str(shelf), str(menu), *[str(x) for x in objects]], check=True)
 layout = (OUT / 'chromatic-arcade.map').read_text()
+
+
+def bank_usage(layout):
+    """Bytes placed in each ROM bank, from the linker map. The linker only
+    warns when areas overlap, so check every bank's areas here."""
+    areas, fixed = [], 0
+    for name, addr, size, kind in re.findall(r'^(_\w+)\s+([0-9A-F]{8})\s+([0-9A-F]{8}) =.*\((ABS|REL)', layout, re.M):
+        addr, size = int(addr, 16), int(size, 16)
+        if kind == 'ABS':
+            fixed += size      # vectors and the cartridge header, below 0x200
+        elif size and (addr & 0xFFFF) < 0x8000:
+            areas.append((addr >> 16, addr & 0xFFFF, size, name))
+    used = {0: fixed}
+    for bank in sorted({a[0] for a in areas}):
+        spans = sorted((start, start + size, name) for b, start, size, name in areas if b == bank)
+        low, high = (0x0000, 0x4000) if bank == 0 else (0x4000, 0x8000)
+        for (start, end, name), following in zip(spans, spans[1:] + [(high, high, '')]):
+            assert low <= start and end <= high, f'{name} overflows bank {bank}: {start:#x}-{end:#x}'
+            assert end <= following[0], f'{name} overlaps {following[2]} in bank {bank}'
+        used[bank] = used.get(bank, 0) + sum(end - start for start, end, name in spans)
+    return used
+
+
+used = bank_usage(layout)
+assert max(used) < ROM_BANKS and rom.stat().st_size == ROM_BANKS * 16384
+# All ordinary game RAM must end below the screen buffers the runtime pins
+# at 0xD000; the overlay slot above them ends where the stack's room begins.
 heap = int(re.search(r'([0-9A-F]{8})\s+s__HEAP\b', layout).group(1), 16)
 assert heap <= 0xD000, f'WRAM overlaps screen buffers: heap at {heap:#x}'
-print(f'{rom}: {rom.stat().st_size} bytes, WRAM free {0xD000 - heap} bytes, SHA-256 {hashlib.sha256(rom.read_bytes()).hexdigest()}')
+emit('overlays.json', json.dumps(overlays, indent=2) + '\n')
+packed = sorted(b for b in used if PACKED_BANKS[0] <= b <= PACKED_BANKS[1])
+print(f'{rom}: {rom.stat().st_size} bytes, WRAM free {0xD000 - heap} bytes, '
+      f'{PACKED_BANKS[1] - PACKED_BANKS[0] + 1 - len(packed)} empty banks, '
+      f'overlays {", ".join(f"{slug} {sum(s for a, s in v.values())}" for slug, v in overlays.items())} bytes, '
+      f'SHA-256 {hashlib.sha256(rom.read_bytes()).hexdigest()}')

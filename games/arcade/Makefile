@@ -1,9 +1,9 @@
+# Every game the cartridge links. Building their ROMs is enough: releasing
+# them would run their tests, which rewrite tracked screenshots.
+GAMES := neon-wake moonthread echo-vault bloom-circuit orbit-choir stormkite comet-links prism-well dot-swarm hello-dot dreambase-invaders dotwing
 .PHONY: all test release
 all:
-	"$(MAKE)" -C ../.. games
-	"$(MAKE)" -C ../hello-dot all
-	"$(MAKE)" -C ../dot-swarm all
-	"$(MAKE)" -C ../dreambase-invaders all
+	@for game in $(GAMES); do "$(MAKE)" -C ../$$game all || exit $$?; done
 	python3 tools/build.py
 test: all
 	../../.tools/venv/bin/python tools/test.py

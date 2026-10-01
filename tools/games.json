@@ -303,7 +303,7 @@
     "title": "Dotwing",
     "genre": "AI sky shooter",
     "tagline": "Build your Dot. Rule the sky.",
-    "description": "Build a smiling OpenAI Dot, suit up in your own plane, and fly through a bright arcade battle for AI supremacy. Grok, Claude, Gemini and Muse turn their emblems into rival fleets and four giant bosses. Collect tokens, trigger a token burst, and upgrade your plane between flights.",
+    "description": "Build a smiling OpenAI Dot, suit up in your own plane, and fly four scrolling sectors for AI supremacy: floating islands, coral mesas, a neon city and a crystal nebula. Grok, Claude, Gemini and Muse send their emblem fleets and four giant bosses. Collect tokens, trigger a token burst, recruit wing dots and upgrade your plane between sectors.",
     "accent": "#43efc1",
     "controls": [
       [
@@ -323,8 +323,8 @@
         "Pause; launch from the hangar"
       ]
     ],
-    "goal": "Defeat all four rival lab bosses. Your plane fires automatically. Collect token coins and power boosts, then spend banked tokens on permanent weapon, reactor and shield upgrades. The Dot builder saves your shape, color, face and accessory together with your upgrades and best score.",
-    "experiment": "A native 60 Hz C flight engine with a scrolling sky, animated rival emblems, four distinct boss patterns, an on-cartridge Dot builder and checksum-protected battery saves. Token currency, pilot customization and permanent plane upgrades persist between sessions.",
+    "goal": "Defeat all four rival lab bosses. Your plane fires automatically. Chain defeats for multipliers, grab coins, power, repairs, turbo bolts and wing dots, then spend banked tokens on permanent wing gun, hull, reactor and ally upgrades. The Dot builder saves your shape, color, face and gear together with your upgrades and best score.",
+    "experiment": "A native 60 Hz engine in C and hand-written SM83 assembly: four streamed sectors built from deduplicated scenery stamps with sideways parallax, CGB DMA for map and HUD rows, 96 x 56 bosses painted on the background layer and scrolled whole, palette fades instead of switching the LCD off so the screen never flashes white, an MML music driver in the VBlank interrupt, and checksum-protected battery saves.",
     "order": 12,
     "category": "action",
     "cover": "illustrated",
