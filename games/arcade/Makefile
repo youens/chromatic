@@ -3,6 +3,7 @@ all:
 	"$(MAKE)" -C ../.. games
 	"$(MAKE)" -C ../hello-dot all
 	"$(MAKE)" -C ../dot-swarm all
+	"$(MAKE)" -C ../dreambase-invaders all
 	python3 tools/build.py
 test: all
 	../../.tools/venv/bin/python tools/test.py

@@ -1,4 +1,4 @@
-/* Chromatic Arcade launcher: a sliding shelf of nine cartridges, info cards,
+/* Chromatic Arcade launcher: a sliding shelf of cartridges, info cards,
    and battery-backed records. The icon band scrolls on its own scanline split
    while the header and the game details stay still. */
 #include "runtime.h"
@@ -8,11 +8,15 @@
 #include <string.h>
 
 #define HELLO_KIND 255
+#define DREAMBASE_KIND 254
 #define INTRO 0
 #define SHELF 1
 #define INFO 2
 #define RECORDS 3
-#define SAVE_VERSION 2
+#define SAVE_VERSION 3
+/* Version 2 records held the first ten games. */
+#define V2_GAMES 10
+#define V2_SIZE (4 + 2 + 4 * V2_GAMES + 2)
 #define ERASE_FRAMES 120
 
 typedef struct {
@@ -47,13 +51,15 @@ static const uint16_t base_palettes[64] = {
     INK, INK, INK, INK};
 
 /* ------------------------------------------------------------- records */
-static uint16_t checksum(void) {
-  const uint8_t *p = (const uint8_t *)&records;
+static uint16_t sum_bytes(const uint8_t *p, uint8_t n) {
   uint16_t sum = 0x5A17;
   uint8_t i;
-  for (i = 0; i < sizeof(Records) - 2; i++)
+  for (i = 0; i < n; i++)
     sum = ((sum << 1) | (sum >> 15)) ^ p[i];
   return sum;
+}
+static uint16_t checksum(void) {
+  return sum_bytes((const uint8_t *)&records, sizeof(Records) - 2);
 }
 static void save_records(void) {
   records.check = checksum();
@@ -69,12 +75,22 @@ static void reset_records(void) {
   records.version = SAVE_VERSION;
 }
 static void load_records(void) {
+  uint8_t raw[sizeof(Records)];
   ENABLE_RAM;
   SWITCH_RAM(0);
-  memcpy(&records, (void *)0xA000, sizeof(Records));
+  memcpy(raw, (void *)0xA000, sizeof(Records));
   DISABLE_RAM;
-  if (memcmp(records.magic, magic, 4) || records.version != SAVE_VERSION ||
-      records.check != checksum() || records.last >= GAME_COUNT)
+  memcpy(&records, raw, sizeof(Records));
+  if (!memcmp(raw, magic, 4) && raw[4] == 2 && raw[5] < V2_GAMES &&
+      sum_bytes(raw, V2_SIZE - 2) == (raw[V2_SIZE - 2] | (uint16_t)raw[V2_SIZE - 1] << 8)) {
+    /* Keep a version 2 cartridge's records, and open the shelf on the
+       first game it has never seen. */
+    reset_records();
+    memcpy(records.best, raw + 6, 2 * V2_GAMES);
+    memcpy(records.plays, raw + 6 + 2 * V2_GAMES, 2 * V2_GAMES);
+    records.last = V2_GAMES;
+  } else if (memcmp(records.magic, magic, 4) || records.version != SAVE_VERSION ||
+             records.check != checksum() || records.last >= GAME_COUNT)
     reset_records();
   save_records();
 }
@@ -258,7 +274,7 @@ static void shelf_details(void) {
   const uint16_t plays = records.plays[menu_index];
   clear_row(10);
   for (i = 0; i < GAME_COUNT; i++)
-    tile(5 + i, 10, i == menu_index ? UI_DOT_ON : UI_DOT,
+    tile(((20 - GAME_COUNT) >> 1) + i, 10, i == menu_index ? UI_DOT_ON : UI_DOT,
          i == menu_index ? 1 : 6);
   centered(12, game_names[menu_index], 0);
   centered(13, game_genres[menu_index], 1);
@@ -395,11 +411,12 @@ static void draw_records(void) {
   header();
   centered(2, "HALL OF LIGHT", 7);
   for (i = 0; i < GAME_COUNT; i++) {
-    text(1, 4 + i, game_names[i], i == menu_index ? 1 : 0);
+    uint8_t y = 14 - GAME_COUNT + i;
+    text(1, y, game_shorts[i], i == menu_index ? 1 : 0);
     if (records.plays[i])
-      digits(15, 4 + i, records.best[i], 5, i == menu_index ? 1 : 6);
+      digits(15, y, records.best[i], 5, i == menu_index ? 1 : 6);
     else
-      text(17, 4 + i, "---", 6);
+      text(17, y, "---", 6);
     total += records.plays[i];
   }
   text(1, 14, "GAMES PLAYED", 6);
@@ -483,6 +500,11 @@ static void launch(void) {
     hello_run();
     if (best_score > records.best[slot])
       records.best[slot] = best_score;
+  } else if (kind == DREAMBASE_KIND) {
+    db_best = records.best[slot];
+    dreambase_run();
+    if (db_best > records.best[slot])
+      records.best[slot] = db_best;
   } else {
     arcade_selected = kind;
     best = records.best[slot];

@@ -1,4 +1,4 @@
-"""Build the Chromatic Arcade cartridge from the nine original game sources.
+"""Build the Chromatic Arcade cartridge from the original game sources.
 
 Each shared-runtime game is compiled from its own unmodified source. Its
 file-scope symbols are discovered from the compiler's own output and given a
@@ -165,6 +165,17 @@ for fn in ['game_init', 'game_tick', 'game_seconds']:
 emit('game.h', '#include <gb/gb.h>\n' + hheader)
 emit('hello-game.c', f'#pragma bank {HELLO_BANK + 1}\n' + hgame)
 prototypes.append('void hello_run(void) BANKED;\nextern uint16_t best_score;')
+
+# Dreambase Invaders also keeps its own engine. fixed.c holds its interrupt
+# handlers and the helpers that take pointers into a caller's bank, so it
+# stays in the fixed bank; each other module gets a bank of its own.
+DREAMBASE = ROOT / 'games/dreambase-invaders'
+DB_BANKS = {'main': ART_BANK + 1, 'screens': ART_BANK + 2, 'play': ART_BANK + 3, 'art': ART_BANK + 4}
+assert max(DB_BANKS.values()) < ROM_BANKS
+db_sources = [emit(f'dbi-{name}.c', f'#pragma bank {bank}\n' + (DREAMBASE / 'src' / f'{name}.c').read_text())
+              for name, bank in DB_BANKS.items()]
+db_sources.append(emit('dbi-fixed.c', (DREAMBASE / 'src/fixed.c').read_text()))
+prototypes.append('void dreambase_run(void) BANKED;\nextern uint16_t db_best;')
 prototypes.append('void launcher_art(void) BANKED;\nvoid arcade_metadata(void);')
 emit('modules.h', '\n'.join(prototypes) + '\n')
 
@@ -187,6 +198,11 @@ for name in sources:
     objects.append(compile_c(OUT / f'{name}.c', OUT, SHARED))
 for path in unbanked:
     objects.append(compile_c(path, OUT, SHARED))
+for path in db_sources:
+    target = OUT / (path.stem + '.o')
+    subprocess.run([str(LCC), '-DARCADE', '-Wf--opt-code-size', '-I' + str(DREAMBASE / 'src'),
+                    '-I' + str(DREAMBASE / 'build'), '-c', '-o', str(target), str(path)], check=True)
+    objects.append(target)
 menu = OUT / 'menu.o'
 subprocess.run([str(LCC), '-I' + str(OUT), '-I' + str(SHARED), '-c', '-o', str(menu), str(ROOT / 'games/arcade/src/menu.c')], check=True)
 rom = OUT / 'chromatic-arcade.gbc'

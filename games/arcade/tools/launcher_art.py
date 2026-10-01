@@ -55,6 +55,11 @@ GAMES = [
      'tagline':'GLOW GROW GO','blurb':['GROW YOUR DOT CHAIN','OWN TRAIL IS SAFE'],
      'controls':['D PAD STEER','A BOOST','GROW TO 48 DOTS'],
      'palette':[INK,(1,10,15),(0,27,29),(31,8,22)]},
+    {'slug': 'dreambase-invaders', 'kind': 'dreambase', 'name': 'DREAMBASE INVADERS',
+     'short': 'DREAMBASE INV', 'genre': 'DATA EATING ARCADE', 'tagline': 'EAT THE DATA',
+     'blurb': ['EAT EVERY LOGO THE', 'MOON BASE FIRES UP'],
+     'controls': ['D PAD MOVE', 'A OR B DASH', 'CLEAR ALL 8 STACKS'],
+     'palette': [INK, (2, 6, 7), (2, 29, 14), (31, 31, 31)]},
 ]
 
 
@@ -330,8 +335,30 @@ def icon_dot_swarm():
         disc(p,cx,cy,2,3)
     return p
 
+def icon_dreambase_invaders():
+    """The Dreambase Data Analyst, doubled from the cartridge sprite, gulping
+    data bits that rise from the lunar base."""
+    sys.path.insert(0, str(ROOT / 'games/dreambase-invaders/tools'))
+    from art_data import INVADERS
+    p = card()
+    rows = INVADERS[0][1]
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch != '.':
+                rect(p, 8 + x * 2, 1 + y * 2, 9 + x * 2, 2 + y * 2, {'1': 1, '2': 2, '3': 3}[ch])
+    for x, y in [(21, 39), (27, 36), (16, 42)]:
+        rect(p, x, y, x + 2, y + 2, 3)
+    for x in range(48):
+        y = 46 - int(3 * math.sin(x / 15.3))
+        for yy in range(y, 48):
+            if inside(p, x, yy):
+                p[yy][x] = 2 if yy == y else 1
+    return p
+
+
 ICONS = [icon_neon_wake, icon_moonthread, icon_echo_vault, icon_bloom_circuit, icon_orbit_choir,
-         icon_hello_dot, icon_stormkite, icon_comet_links, icon_prism_well, icon_dot_swarm]
+         icon_hello_dot, icon_stormkite, icon_comet_links, icon_prism_well, icon_dot_swarm,
+         icon_dreambase_invaders]
 
 UI = {
     'dot': ['00000000', '00000000', '00000000', '00011000', '00011000', '00000000', '00000000', '00000000'],
@@ -498,12 +525,16 @@ void launcher_art(void) BANKED {{
     data += c_bytes('uint8_t', 'icon_attrs', icon_attrs)
     data += c_bytes('uint16_t', 'icon_palettes', [rgb(c) for g in GAMES for c in g['palette']])
     data += c_bytes('uint16_t', 'accents', [rgb(accent(g)) for g in GAMES])
-    kinds = [255 if g['kind'] == 'hello' else g['kind'] for g in GAMES]
+    kinds = [255 if g['kind'] == 'hello' else 254 if g['kind'] == 'dreambase' else g['kind'] for g in GAMES]
     data += c_bytes('uint8_t', 'game_kind', kinds)
     # fade_table[level * 32 + c] = c * level / 8, for palette fades.
     data += c_bytes('uint8_t', 'fade_table', [c * level >> 3 for level in range(9) for c in range(32)])
     for field in ('name', 'genre', 'tagline'):
         data += f'const char *const game_{field}s[] = {{' + ','.join(c_string(g[field]) for g in GAMES) + '};\n'
+    # Hall of Light rows leave 13 columns for a name.
+    shorts = [g.get('short', g['name']) for g in GAMES]
+    assert all(len(n) <= 13 for n in shorts), shorts
+    data += 'const char *const game_shorts[] = {' + ','.join(c_string(n) for n in shorts) + '};\n'
     data += 'const char *const game_blurbs[] = {' + ','.join(c_string(line) for g in GAMES for line in g['blurb']) + '};\n'
     data += 'const char *const game_help[] = {' + ','.join(c_string(line) for g in GAMES for line in controls(g)) + '};\n'
     (OUT / 'launcher-data.h').write_text(data)
