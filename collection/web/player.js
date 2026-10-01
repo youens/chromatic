@@ -13,6 +13,8 @@ const CLOCK = 4194304;
 const AUDIO_FRAMES = 2048;
 let moduleGB, emulator, romPointer, joypadPointer, audio, audioTime = 0;
 let sound = false, started = false, previous = 0, totalFrames = 0;
+let ramFile = 0, ramSize = 0, ramDirty = false, lastSavedRam = '', saveWarning = false;
+const saveKey = 'chromatic:ram:v1:' + gameSlug;
 const held = new Map();
 const sources = new Set();
 const keys = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', KeyX: 'A', Space: 'A', KeyZ: 'B', ShiftLeft: 'B', ShiftRight: 'B', Enter: 'start', KeyP: 'start', KeyC: 'select' };
@@ -69,6 +71,36 @@ function render() {
   const pixels = new Uint8ClampedArray(moduleGB.HEAPU8.buffer, ptr, 160 * 144 * 4);
   context.putImageData(new ImageData(pixels, 160, 144), 0, 0);
 }
+function loadCartridgeSave() {
+  ramFile = moduleGB._ext_ram_file_data_new(emulator);
+  ramSize = moduleGB._get_file_data_size(ramFile);
+  if (!ramSize) return;
+  try {
+    const encoded = localStorage.getItem(saveKey);
+    if (!encoded) return;
+    const bytes = atob(encoded);
+    if (bytes.length !== ramSize) return;
+    const offset = moduleGB._get_file_data_ptr(ramFile);
+    for (let i = 0; i < ramSize; i++) moduleGB.HEAPU8[offset + i] = bytes.charCodeAt(i);
+    if (moduleGB._emulator_read_ext_ram(emulator, ramFile) === 0) lastSavedRam = encoded;
+  } catch (error) { console.warn('Cartridge save could not be restored', error); }
+}
+function saveCartridge() {
+  if (!ramFile || !ramSize || !ramDirty) return;
+  try {
+    if (moduleGB._emulator_write_ext_ram(emulator, ramFile) !== 0) return;
+    const offset = moduleGB._get_file_data_ptr(ramFile);
+    const bytes = moduleGB.HEAPU8.subarray(offset, offset + ramSize);
+    const encoded = btoa(String.fromCharCode(...bytes));
+    if (encoded !== lastSavedRam) localStorage.setItem(saveKey, encoded);
+    lastSavedRam = encoded;
+    ramDirty = false;
+    saveWarning = false;
+  } catch (error) {
+    if (!saveWarning) console.warn('Cartridge save could not be stored', error);
+    saveWarning = true;
+  }
+}
 function advance(seconds) {
   const target = moduleGB._emulator_get_ticks_f64(emulator) + seconds * CLOCK;
   let event;
@@ -77,6 +109,8 @@ function advance(seconds) {
     if (event & 1) totalFrames++;
     if (event & 2) queueAudio();
   } while (!(event & 4));
+  if (ramFile && moduleGB._emulator_was_ext_ram_updated(emulator)) ramDirty = true;
+  saveCartridge();
   render();
   canvas.dataset.frames = String(totalFrames);
 }
@@ -110,7 +144,7 @@ window.addEventListener('keydown', event => {
 });
 window.addEventListener('keyup', event => { if (keys[event.code]) key(keys[event.code], false, event.code); });
 window.addEventListener('blur', () => { if (emulator) releaseAll(); });
-document.addEventListener('visibilitychange', () => { previous = 0; if (emulator) releaseAll(); stopAudio(); });
+document.addEventListener('visibilitychange', () => { previous = 0; if (emulator) releaseAll(); saveCartridge(); stopAudio(); });
 for (const button of document.querySelectorAll('[data-key]')) {
   button.addEventListener('pointerdown', event => {
     event.preventDefault(); if (!started) return;
@@ -128,6 +162,7 @@ for (const button of document.querySelectorAll('[data-key]')) {
     moduleGB.HEAPU8.set(rom, romPointer);
     emulator = moduleGB._emulator_new_simple(romPointer, rom.length, 48000, AUDIO_FRAMES, 0);
     if (!emulator) throw new Error('Emulator could not start');
+    if (rom[0x149]) loadCartridgeSave();
     joypadPointer = moduleGB._joypad_new();
     moduleGB._emulator_set_default_joypad_callback(emulator, joypadPointer);
     advance(2);
@@ -141,13 +176,13 @@ for (const button of document.querySelectorAll('[data-key]')) {
     launch.querySelector('small').textContent = 'You can also download the ROM above.';
   }
 })();
-window.addEventListener('pagehide', () => { if (emulator) releaseAll(); stopAudio(); });
+window.addEventListener('pagehide', () => { if (emulator) releaseAll(); saveCartridge(); stopAudio(); });
 
 document.querySelector('#fullscreen').addEventListener('click', async () => {
   try { if(document.fullscreenElement) await document.exitFullscreen(); else await document.querySelector('.screen-wrap').requestFullscreen(); }
   catch { status.textContent = 'FULLSCREEN UNAVAILABLE'; }
 });
-document.querySelector('#reset').addEventListener('click', () => location.reload());
+document.querySelector('#reset').addEventListener('click', () => { saveCartridge(); location.reload(); });
 function pollGamepad() {
   const pad = navigator.getGamepads?.()[0];
   const buttons = {up:12,down:13,left:14,right:15,A:0,B:1,select:8,start:9};

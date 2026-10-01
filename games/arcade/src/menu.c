@@ -9,14 +9,16 @@
 
 #define HELLO_KIND 255
 #define DREAMBASE_KIND 254
+#define DOTWING_KIND 253
 #define INTRO 0
 #define SHELF 1
 #define INFO 2
 #define RECORDS 3
-#define SAVE_VERSION 3
-/* Version 2 records held the first ten games. */
+#define SAVE_VERSION 4
+/* Historical layouts hold the first ten or eleven games. */
 #define V2_GAMES 10
-#define V2_SIZE (4 + 2 + 4 * V2_GAMES + 2)
+#define V3_GAMES 11
+#define RECORD_PAGE 11
 #define ERASE_FRAMES 120
 
 typedef struct {
@@ -30,7 +32,7 @@ Records records;
 uint8_t arcade_selected, arcade_in_game, menu_index, launcher_mode, saves_ok;
 uint8_t center_slot, ring_game[4], slide_dir, slide_frame, fade_level;
 uint8_t band_scx, band_on, erase_hold, frame_count;
-static uint8_t band_split, installed, map_dirty, previous, held_for;
+static uint8_t band_split, installed, map_dirty, previous, held_for, records_page;
 static uint16_t pal_mask;
 static uint16_t palettes[64], faded[64];
 static const uint8_t slide_steps[8] = {14, 12, 10, 8, 7, 6, 4, 3};
@@ -76,19 +78,22 @@ static void reset_records(void) {
 }
 static void load_records(void) {
   uint8_t raw[sizeof(Records)];
+  uint8_t old_games, old_size;
   ENABLE_RAM;
   SWITCH_RAM(0);
   memcpy(raw, (void *)0xA000, sizeof(Records));
   DISABLE_RAM;
   memcpy(&records, raw, sizeof(Records));
-  if (!memcmp(raw, magic, 4) && raw[4] == 2 && raw[5] < V2_GAMES &&
-      sum_bytes(raw, V2_SIZE - 2) == (raw[V2_SIZE - 2] | (uint16_t)raw[V2_SIZE - 1] << 8)) {
-    /* Keep a version 2 cartridge's records, and open the shelf on the
-       first game it has never seen. */
+  old_games = raw[4] == 2 ? V2_GAMES : raw[4] == 3 ? V3_GAMES : 0;
+  old_size = 8 + 4 * old_games;
+  if (old_games && !memcmp(raw, magic, 4) && raw[5] < old_games &&
+      sum_bytes(raw, old_size - 2) == (raw[old_size - 2] | (uint16_t)raw[old_size - 1] << 8)) {
+    /* Carry every valid historical record forward. Dotwing gets a new
+       empty entry and opens once; its own save at A200 is independent. */
     reset_records();
-    memcpy(records.best, raw + 6, 2 * V2_GAMES);
-    memcpy(records.plays, raw + 6 + 2 * V2_GAMES, 2 * V2_GAMES);
-    records.last = V2_GAMES;
+    memcpy(records.best, raw + 6, 2 * old_games);
+    memcpy(records.plays, raw + 6 + 2 * old_games, 2 * old_games);
+    records.last = GAME_COUNT - 1;
   } else if (memcmp(records.magic, magic, 4) || records.version != SAVE_VERSION ||
              records.check != checksum() || records.last >= GAME_COUNT)
     reset_records();
@@ -405,19 +410,23 @@ static void draw_info(void) {
   map_dirty = 1;
 }
 static void draw_records(void) {
-  uint8_t i;
+  uint8_t i, first = records_page * RECORD_PAGE;
   uint16_t total = 0;
   screen(0, 0);
   header();
   centered(2, "HALL OF LIGHT", 7);
+  if (GAME_COUNT > RECORD_PAGE)
+    digits(19, 2, records_page + 1, 1, 1);
   for (i = 0; i < GAME_COUNT; i++) {
-    uint8_t y = 14 - GAME_COUNT + i;
-    text(1, y, game_shorts[i], i == menu_index ? 1 : 0);
-    if (records.plays[i])
-      digits(15, y, records.best[i], 5, i == menu_index ? 1 : 6);
-    else
-      text(17, y, "---", 6);
     total += records.plays[i];
+    if (i >= first && i < first + RECORD_PAGE) {
+      uint8_t y = 3 + i - first;
+      text(1, y, game_shorts[i], i == menu_index ? 1 : 0);
+      if (records.plays[i])
+        digits(15, y, records.best[i], 5, i == menu_index ? 1 : 6);
+      else
+        text(17, y, "---", 6);
+    }
   }
   text(1, 14, "GAMES PLAYED", 6);
   digits(15, 14, total, 5, 0);
@@ -426,6 +435,8 @@ static void draw_records(void) {
   clear_row(17);
   tile(0, 17, UI_BTN_B, 0);
   text(2, 17, "BACK", 6);
+  if (GAME_COUNT > RECORD_PAGE)
+    text(9, 17, "L/R PAGE", 6);
   band_on = 0;
   map_dirty = 1;
 }
@@ -445,8 +456,10 @@ static void show(uint8_t mode) {
     draw_shelf();
   else if (mode == INFO)
     draw_info();
-  else
+  else {
+    records_page = menu_index / RECORD_PAGE;
     draw_records();
+  }
   map_dirty = 1;
 }
 
@@ -505,6 +518,11 @@ static void launch(void) {
     dreambase_run();
     if (db_best > records.best[slot])
       records.best[slot] = db_best;
+  } else if (kind == DOTWING_KIND) {
+    dw_best = records.best[slot];
+    dotwing_run();
+    if (dw_best > records.best[slot])
+      records.best[slot] = dw_best;
   } else {
     arcade_selected = kind;
     best = records.best[slot];
@@ -596,6 +614,10 @@ void main(void) {
         if (erase_hold && erase_hold < ERASE_FRAMES)
           draw_records();
         erase_hold = 0;
+        if (GAME_COUNT > RECORD_PAGE && (pressed & (J_LEFT | J_RIGHT))) {
+          records_page = (records_page + 1) % ((GAME_COUNT + RECORD_PAGE - 1) / RECORD_PAGE);
+          draw_records();
+        }
         if (pressed & J_B) {
           sound_blip(1700, 0);
           show(SHELF);

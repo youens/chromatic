@@ -47,7 +47,7 @@ def emit(name, text):
 
 
 def compile_c(source, *includes, asm=False):
-    flags = ['-I' + str(i) for i in includes]
+    flags = ['-Wf--opt-code-size', *['-I' + str(i) for i in includes]]
     target = OUT / (source.stem + ('.asm' if asm else '.o'))
     subprocess.run([str(LCC), *flags, '-S' if asm else '-c', '-o', str(target), str(source)], check=True)
     return target
@@ -176,6 +176,16 @@ db_sources = [emit(f'dbi-{name}.c', f'#pragma bank {bank}\n' + (DREAMBASE / 'src
               for name, bank in DB_BANKS.items()]
 db_sources.append(emit('dbi-fixed.c', (DREAMBASE / 'src/fixed.c').read_text()))
 prototypes.append('void dreambase_run(void) BANKED;\nextern uint16_t db_best;')
+# Dotwing has its own 60 Hz flight engine. Most helpers own bank 30;
+# bridge.c copies caller-bank text before crossing into that helper bank.
+DOTWING = ROOT / 'games/dotwing'
+DW_BANKS = {'main': ART_BANK + 5, 'screens': ART_BANK + 6, 'play': ART_BANK + 7, 'art': ART_BANK + 8}
+assert max(DW_BANKS.values()) < ROM_BANKS
+dw_sources = [emit(f'dw-{name}.c', f'#pragma bank {bank}\n' + (DOTWING / 'src' / f'{name}.c').read_text())
+              for name, bank in DW_BANKS.items()]
+dw_sources.append(emit('dw-fixed.c', '#pragma bank 30\n' + (DOTWING / 'src/fixed.c').read_text()))
+dw_sources.append(emit('dw-bridge.c', (DOTWING / 'src/bridge.c').read_text()))
+prototypes.append('void dotwing_run(void) BANKED;\nextern uint16_t dw_best;')
 prototypes.append('void launcher_art(void) BANKED;\nvoid arcade_metadata(void);')
 emit('modules.h', '\n'.join(prototypes) + '\n')
 
@@ -198,13 +208,35 @@ for name in sources:
     objects.append(compile_c(OUT / f'{name}.c', OUT, SHARED))
 for path in unbanked:
     objects.append(compile_c(path, OUT, SHARED))
-for path in db_sources:
-    target = OUT / (path.stem + '.o')
-    subprocess.run([str(LCC), '-DARCADE', '-Wf--opt-code-size', '-I' + str(DREAMBASE / 'src'),
-                    '-I' + str(DREAMBASE / 'build'), '-c', '-o', str(target), str(path)], check=True)
-    objects.append(target)
+for game, native_sources in ((DREAMBASE, db_sources), (DOTWING, dw_sources)):
+    for path in native_sources:
+        target = OUT / (path.stem + '.o')
+        subprocess.run([str(LCC), '-DARCADE', '-Wf--opt-code-size', '-I' + str(game / 'src'),
+                        '-I' + str(game / 'build'), '-c', '-o', str(target), str(path)], check=True)
+        objects.append(target)
+# Launcher save transfers need no caller-bank pointers. Give the historical
+# migration code the final ROM bank so bank 0 keeps room for interrupts.
+menu_source = (ROOT / 'games/arcade/src/menu.c').read_text()
+records_begin = menu_source.index('/* ------------------------------------------------------------- records */')
+records_end = menu_source.index('/* ------------------------------------------------------ screen helpers */')
+record_code = menu_source[records_begin:records_end]
+record_type = menu_source[menu_source.index('typedef struct {'):menu_source.index('} Records;') + len('} Records;')]
+record_defines = '\n'.join(re.findall(r'^#define (?:SAVE_VERSION|V2_GAMES|V3_GAMES) .*$', menu_source, re.M))
+record_magic = re.search(r'^static const char magic\[4\].*$', menu_source, re.M).group(0)
+record_functions = ('save_records', 'reset_records', 'load_records')
+record_declarations = '\n'.join(f'void {fn}(void) BANKED;' for fn in record_functions)
+for fn in record_functions:
+    record_code = replace(record_code, f'static void {fn}(void)', f'void {fn}(void) BANKED')
+record_source = f'#pragma bank 31\n#include "runtime.h"\n#include <string.h>\n#define GAME_COUNT {len(launcher_art.GAMES)}\n'
+record_source += record_defines + '\n' + record_type + '\nextern Records records;\nextern uint8_t saves_ok;\n'
+record_source += record_magic + '\n' + record_code
+record_path = emit('menu-records.c', record_source)
+objects.append(compile_c(record_path, OUT, SHARED))
+menu_source = menu_source[:records_begin] + record_declarations + '\n\n' + menu_source[records_end:]
+menu_source = replace(menu_source, record_magic, '')
+menu_path = emit('menu.c', menu_source)
 menu = OUT / 'menu.o'
-subprocess.run([str(LCC), '-I' + str(OUT), '-I' + str(SHARED), '-c', '-o', str(menu), str(ROOT / 'games/arcade/src/menu.c')], check=True)
+subprocess.run([str(LCC), '-Wf--opt-code-size', '-I' + str(OUT), '-I' + str(SHARED), '-c', '-o', str(menu), str(menu_path)], check=True)
 rom = OUT / 'chromatic-arcade.gbc'
 # MBC5 with battery-backed RAM (0x1B): 32 banks of ROM and one 8 KiB RAM bank.
 subprocess.run([str(LCC), '-Wm-yC', '-Wm-yt0x1B', f'-Wm-yo{ROM_BANKS}', '-Wm-ya1', '-Wm-ynCHROMATIC ARCADE',

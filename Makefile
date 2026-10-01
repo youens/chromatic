@@ -1,4 +1,4 @@
-GAMES := dot-swarm neon-wake moonthread echo-vault bloom-circuit orbit-choir stormkite comet-links prism-well dreambase-invaders
+GAMES := dot-swarm neon-wake moonthread echo-vault bloom-circuit orbit-choir stormkite comet-links prism-well dreambase-invaders dotwing
 .PHONY: all games test site preview deploy
 all: games site
 games:
@@ -9,6 +9,8 @@ test:
 	.tools/venv/bin/python tools/test_collection.py
 	"$(MAKE)" -C games/hello-dot test
 	"$(MAKE)" -C games/dreambase-invaders test
+	"$(MAKE)" -C games/dotwing test
+	node tools/test_browser_saves.cjs
 preview:
 	"$(MAKE)" -C collection preview
 deploy:
