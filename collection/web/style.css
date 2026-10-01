@@ -253,12 +253,12 @@ h2 {
 .card-art img {
   width:100%;
   height:100%;
-  object-fit:cover;
+  object-fit:contain;
   display:block;
   transition:transform .25s
 }
 .card-art:hover img {
-  transform:scale(1.025)
+  transform:none
 }
 .card-art .play-tag {
   position:absolute;
@@ -357,8 +357,8 @@ h2 {
 }
 .mini-cover {
   width:100%;
-  aspect-ratio:1.5;
-  object-fit:cover;
+  height:auto;
+  object-fit:contain;
   border-radius:8px;
   margin-bottom:27px;
   border:1px solid #ffffff21
