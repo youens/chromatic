@@ -21,6 +21,18 @@ p = PyBoy(str(ROM), window='null', sound_emulated=False)
 p.set_emulation_speed(0)
 held = set()
 checks = []
+dma_scanlines = []
+
+def observe_dma(_):
+    if p.memory[0xFF40] & 0x80:
+        dma_scanlines.append(p.memory[0xFF44])
+
+# Observe actual HDMA5 writes, including their timing relative to the LCD.
+code = ROM.read_bytes()
+for pc in range(len(code) - 2):
+    if code[pc:pc + 2] == b'\xe0\x55' or code[pc:pc + 3] == b'\xea\x55\xff':
+        p.hook_register(pc // 0x4000, pc if pc < 0x4000 else 0x4000 + pc % 0x4000, observe_dma, None)
+
 
 
 def run(n=1, keys=()):
@@ -126,7 +138,15 @@ try:
     assert get('db_diff') == 2
     press('left', 10)
     assert get('db_diff') == 1
-    checks.append('difficulty selector')
+    for i in range(120):
+        press('left' if i % 4 < 2 else 'right', 9)
+        mode = get('db_diff')
+        expected = [0 if c == ' ' else ord(c) - 31 for c in
+                    ('   EASY   ', '  NORMAL  ', '   HARD   ')[mode]]
+        assert list(p.memory[0, 0x9A05:0x9A0F]) == expected, ('difficulty tiles', i, mode)
+    press('left', 10)
+    assert get('db_diff') == 1
+    checks.append('difficulty selector and 120 repeated label redraws')
 
     # How to play, then the data stack page.
     press('b')
@@ -243,6 +263,9 @@ try:
     shot('game-over')
     assert word('db_best', signed=False) == score, 'best score kept'
     checks.append('game over keeps the best score')
+
+    assert dma_scanlines and all(144 <= line <= 153 for line in dma_scanlines), sorted(set(dma_scanlines))
+    checks.append('all LCD-on tile DMA stays inside VBlank')
 
     (BUILD / 'validation.json').write_text(json.dumps({
         'sha256': hashlib.sha256(data).hexdigest(),

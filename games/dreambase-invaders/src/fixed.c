@@ -36,6 +36,9 @@ static void flush_rows(uint8_t budget) {
   for (r = 0; r < MAP_ROWS && budget; r++) {
     if (!db_row_dirty[r])
       continue;
+    /* Leave time for both DMA banks and the interrupt epilogue. */
+    if ((LCDC_REG & 0x80) && (LY_REG < 144 || LY_REG >= 150))
+      break;
     db_row_dirty[r] = 0;
     budget--;
     src = 0xD0 + (r >> 3);
@@ -56,28 +59,36 @@ static void flush_rows(uint8_t budget) {
   }
 }
 static void upload(void) {
-  uint16_t m = db_pal_dirty;
-  const uint8_t *p = (const uint8_t *)PAL_LIVE;
-  uint8_t i, j;
-  db_pal_dirty = 0;
-  for (i = 0; m; i++, m >>= 1, p += 8) {
-    if (!(m & 1))
-      continue;
-    if (i < 8) {
-      BCPS_REG = 0x80 | (i << 3);
-      for (j = 0; j < 8; j++)
-        BCPD_REG = p[j];
-    } else {
-      OCPS_REG = 0x80 | ((i - 8) << 3);
-      for (j = 0; j < 8; j++)
-        OCPD_REG = p[j];
+  static uint8_t next_palette;
+  const uint8_t *p;
+  uint8_t i, j, scanned;
+  uint16_t mask;
+  for (scanned = 0; scanned < 16; scanned++) {
+    i = next_palette;
+    mask = (uint16_t)1 << i;
+    if (db_pal_dirty & mask) {
+      /* Resume here next frame, so animated low slots cannot starve sprites. */
+      if ((LCDC_REG & 0x80) && (LY_REG < 144 || LY_REG >= 150))
+        break;
+      db_pal_dirty &= ~mask;
+      p = (const uint8_t *)PAL_LIVE + ((uint16_t)i << 3);
+      if (i < 8) {
+        BCPS_REG = 0x80 | (i << 3);
+        for (j = 0; j < 8; j++)
+          BCPD_REG = p[j];
+      } else {
+        OCPS_REG = 0x80 | ((i - 8) << 3);
+        for (j = 0; j < 8; j++)
+          OCPD_REG = p[j];
+      }
     }
+    next_palette = (i + 1) & 15;
   }
 }
 static void vbl(void) {
   uint8_t vbk = VBK_REG;
+  flush_rows(2);
   upload();
-  flush_rows(6);
   VBK_REG = vbk;
   SCX_REG = db_scx;
   SCY_REG = db_scy;
