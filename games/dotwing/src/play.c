@@ -1178,9 +1178,9 @@ static void run_phase(void) {
         dw_arena_rows(7u + (uint8_t)(dw_phase_t - 100u) * 3u, dw_phase_t == 108 ? 1 : 3, dw_sector);
       } else if (dw_phase_t == 110) {
         /* Switch to boss scrolling: rows 0-6 sit just above the screen. */
-        bx = 0;
+        bx = DW_BOSS_LEFT;
         by = -56;
-        dw_scx = 0;
+        dw_scx = (uint8_t)(0 - bx);
         dw_scy = 56;
       } else if (dw_phase_t >= 112 && dw_phase_t < 115) {
         dw_arena_rows((uint8_t)(dw_phase_t - 112u) * 3u, dw_phase_t == 114 ? 1 : 3, dw_sector);
@@ -1480,14 +1480,12 @@ void dw_update(void) BANKED {
   ++dw_frame;
   ++dw_stage_frame;
   if (dw_phase <= P_WAVES && (dw_frame & 1u)) ++dw_cam;
-  dw_scy = dw_phase < P_BOSS_IN ? (uint8_t)(112u - (uint8_t)dw_cam) : (uint8_t)(0 - by);
   if (dw_phase < P_BOSS_IN) {
     int8_t want = (int8_t)((dw_px - 72) / 5);
+    dw_scy = (uint8_t)(112u - (uint8_t)dw_cam);
     if (cam_x < want) ++cam_x;
     else if (cam_x > want) --cam_x;
     dw_scx = (uint8_t)cam_x;
-  } else {
-    dw_scx = (uint8_t)(0 - bx);
   }
   if (dw_phase == P_INTRO) {
     if (dw_py > 100) dw_py -= 1;
@@ -1520,6 +1518,11 @@ void dw_update(void) BANKED {
   }
   run_phase();
   if (dw_state != DW_FLIGHT && dw_state != DW_TAKEOFF) return;
+  /* Follow this frame's boss movement, keeping its map and sprite core aligned. */
+  if (dw_phase >= P_BOSS_IN) {
+    dw_scx = (uint8_t)(0 - bx);
+    dw_scy = (uint8_t)(0 - by);
+  }
   dw_foes_tick(dw_phase == P_WAVES);
   move_shots();
   move_bullets();

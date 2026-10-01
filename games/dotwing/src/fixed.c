@@ -133,8 +133,6 @@ void dw_oam_flip(void) BANKED {
   _shadow_OAM_base = (uint8_t)((uint16_t)dw_oam >> 8);
 }
 
-/* Finish the frame, wait for VBlank, then apply scroll and palette changes
-   while the LCD is not drawing. */
 /* Frames where logic overran VBlank: emulator tests watch this count. */
 uint16_t dw_missed;
 static uint8_t last_vbl;
@@ -145,6 +143,7 @@ static uint8_t last_vbl;
 typedef struct { uint16_t src, dst; uint8_t blocks, bank; } Xfer;
 static Xfer xq[6];
 static uint8_t xn;
+static volatile uint8_t video_ready;
 
 void dw_xfer(const uint8_t *src, uint16_t dst, uint8_t blocks, uint8_t bank) BANKED {
   Xfer *x;
@@ -171,16 +170,25 @@ static void xfer_run(void) {
   xn = 0;
 }
 
-void dw_sync(void) BANKED {
-  dw_oam_flip();
-  vsync();
-  if ((uint8_t)((uint8_t)sys_time - last_vbl) > 1) ++dw_missed;
-  last_vbl = (uint8_t)sys_time;
+/* Consume a complete frame at the start of VBlank, before the sound driver
+   spends the remaining blanking time. An interrupt during game logic must
+   leave the unfinished transfer queue and palette buffer alone. */
+void dw_video_tick(void) BANKED {
+  if (!video_ready) return;
   if (dw_pal_dirty) {
     pal_upload();
     dw_pal_dirty = 0;
   }
   if (xn) xfer_run();
+  video_ready = 0;
+}
+
+void dw_sync(void) BANKED {
+  dw_oam_flip();
+  video_ready = 1;
+  vsync();
+  if ((uint8_t)((uint8_t)sys_time - last_vbl) > 1) ++dw_missed;
+  last_vbl = (uint8_t)sys_time;
   if (dw_shake) {
     --dw_shake;
     SCX_REG = dw_scx + shake_x[dw_shake & 7];
@@ -247,10 +255,8 @@ void dw_fade_to(uint8_t level) BANKED {
     if (dw_fade < level) ++dw_fade;
     else --dw_fade;
     dw_pal_commit();
+    video_ready = 1;
     vsync();
-    pal_upload();
-    dw_pal_dirty = 0;
-    if (xn) xfer_run();
   }
 }
 

@@ -112,5 +112,8 @@ back in. Logic runs once per display frame in double-speed mode. See
 `make test` drives the real ROM in PyBoy and records the exact ROM hash,
 ordinary button-only play (including a bot campaign), controlled
 collision, pickup, boss and save scenarios, LCD and frame-timing checks in
-`build/validation.json`. Emulator checks do not establish physical
-cartridge behavior or audible sound quality.
+`build/validation.json`. It also runs the website's WASM emulator and compares
+both video map banks against the source scenery through all four sectors,
+map wraparound, pause/resume and boss arenas. The collection test repeats
+these video checks after entering Dotwing through the launcher. Emulator
+checks do not establish physical cartridge behavior or audible sound quality.

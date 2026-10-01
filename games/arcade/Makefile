@@ -7,6 +7,7 @@ all:
 	python3 tools/build.py
 test: all
 	../../.tools/venv/bin/python tools/test.py
+	node ../dotwing/tools/test_video.cjs --collection
 release: test
 	mkdir -p dist art
 	cp build/chromatic-arcade.gbc dist/chromatic-arcade.gbc

@@ -506,7 +506,7 @@ void dw_boss_tick(void) BANKED {
   ++dw_boss_t;
   {
     int8_t s = sin64[(dw_boss_t >> 1) & 63];
-    dw_boss_x = (s >> 2) + (s >> 3);
+    dw_boss_x = DW_BOSS_LEFT + (s >> 2) + (s >> 3);
   }
   dw_boss_y = 8 + (sin64[dw_boss_t & 63] >> 4);
   if (dw_boss_hp < boss_third) boss_phase = 2;

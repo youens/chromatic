@@ -47,12 +47,14 @@ The game runs in double-speed mode and updates once per display frame:
    plane, fires, spawns scripted squadrons, moves rivals, shots, bullets
    and pickups, resolves collisions and writes this frame's sprites into
    the OAM buffer that DMA is not reading.
-2. Hand the finished sprite buffer to the VBlank OAM DMA and wait for
-   VBlank. Then upload the 64 palette colours if they changed (an unrolled
-   128-byte copy), run up to six CGB general-purpose DMA transfers (new
-   scenery rows, boss rows, HUD rows) and apply the scroll registers.
-3. The sound driver runs in the VBlank interrupt through a small fixed-bank
-   hook, so music never stalls during loading.
+2. Hand the finished sprite buffer to the VBlank OAM DMA, mark the video
+   buffers ready and wait for VBlank. At the start of the interrupt, upload
+   changed palette colours and run the queued CGB general-purpose DMA
+   transfers for scenery, boss and HUD rows. An interrupt during unfinished
+   game logic leaves these buffers alone.
+3. The same fixed-bank VBlank hook then runs the sound driver and restores
+   the interrupted ROM bank. After the wait, apply the scroll registers.
+   Video transfers must precede sound so they finish before drawing resumes.
 
 Positions are 8.8 fixed point whose high byte is the screen pixel plus 32,
 so every on-screen coordinate is one byte with no shifting. The hot loops

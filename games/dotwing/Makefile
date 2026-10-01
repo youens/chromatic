@@ -18,5 +18,6 @@ release: all
 	cd dist && shasum -a 256 dotwing.gbc > SHA256SUMS
 test: all
 	../../.tools/venv/bin/python tools/test.py
+	node tools/test_video.cjs
 clean:
 	rm -rf build

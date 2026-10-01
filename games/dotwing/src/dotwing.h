@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include "art_ids.h"
 
+#define DW_BOSS_LEFT ((160 - DW_BOSS_W * 8) / 2)
+
 enum { DW_TITLE, DW_BUILDER, DW_HANGAR, DW_FLIGHT, DW_PAUSE, DW_SHOP,
        DW_RESULTS, DW_HELP, DW_TAKEOFF };
 
@@ -78,6 +80,7 @@ extern volatile uint8_t dw_sfx_req, dw_song_req;
 
 /* fixed.c: shared helpers */
 void dw_sync(void) BANKED;
+void dw_video_tick(void) BANKED;
 void dw_xfer(const uint8_t *src, uint16_t dst, uint8_t blocks, uint8_t bank) BANKED;
 extern uint16_t dw_missed;
 void dw_pal_now(void) BANKED;
